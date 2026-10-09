@@ -491,11 +491,11 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
     [self.view addSubview:_card];
 
     UIVisualEffectView *blur = [[UIVisualEffectView alloc]
-        initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterialDark]];
+        initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark]];
     [_card addSubview:blur];
     AHPin(blur, _card);
     UIView *tint = [UIView new];
-    tint.backgroundColor = [UIColor colorWithRed:22/255.0 green:22/255.0 blue:25/255.0 alpha:0.82];
+    tint.backgroundColor = [UIColor colorWithRed:22/255.0 green:22/255.0 blue:25/255.0 alpha:0.38];
     tint.userInteractionEnabled = NO;
     [_card addSubview:tint];
     AHPin(tint, _card);
@@ -572,6 +572,7 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
     ppqL.attributedText = ppq;
     ppqL.adjustsFontSizeToFitWidth = YES;
     ppqL.minimumScaleFactor = 0.7;
+    ppqL.transform = CGAffineTransformMakeTranslation(0, -6);
 
     UIStackView *strip = [[UIStackView alloc] initWithArrangedSubviews:@[ppqL, rt]];
     strip.axis = UILayoutConstraintAxisHorizontal;
@@ -585,7 +586,7 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
 
     UIStackView *head = [[UIStackView alloc] initWithArrangedSubviews:@[strip, row]];
     head.axis = UILayoutConstraintAxisVertical;
-    head.spacing = -34;
+    head.spacing = -30;
     head.translatesAutoresizingMaskIntoConstraints = NO;
     [_card addSubview:head];
 
