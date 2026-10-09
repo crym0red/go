@@ -654,7 +654,6 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
         if ([p[2] boolValue]) { [c.leadingAnchor constraintEqualToAnchor:w.leadingAnchor].active = YES; [c.trailingAnchor constraintLessThanOrEqualToAnchor:w.trailingAnchor].active = YES; }
         else { [c.trailingAnchor constraintEqualToAnchor:w.trailingAnchor].active = YES; [c.leadingAnchor constraintGreaterThanOrEqualToAnchor:w.leadingAnchor].active = YES; }
     }
-    [lw.widthAnchor constraintEqualToAnchor:rw.widthAnchor].active = YES;
     [l2 setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
     [l2 setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
     for (UILabel *l in @[l1, l1b, l2]) { l.adjustsFontSizeToFitWidth = YES; l.minimumScaleFactor = 0.7; }
@@ -663,6 +662,7 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
     row1.alignment = UIStackViewAlignmentCenter;
     row1.distribution = UIStackViewDistributionFill;
     row1.spacing = 8;
+    [lw.widthAnchor constraintEqualToAnchor:rw.widthAnchor].active = YES;
 
     UIView *hair = [UIView new];
     hair.backgroundColor = [UIColor colorWithWhite:1 alpha:0.12];
