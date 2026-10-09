@@ -7,6 +7,8 @@
 #import <objc/runtime.h>
 #import <Security/Security.h>
 
+#define MG_VER @"AirShare v5"
+
 static NSString *CID(void) {
     NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
     NSString *c = [d stringForKey:@"mrzefv.gc.cid"];
@@ -47,11 +49,12 @@ static void dbg(NSString *t) {
             if (w) break;
         }
         if (!w) return;
-        UILabel *l = [[UILabel alloc] initWithFrame:CGRectMake(8, w.bounds.size.height - 70, w.bounds.size.width - 16, 60)];
-        l.numberOfLines = 3; l.font = [UIFont boldSystemFontOfSize:11]; l.textColor = UIColor.whiteColor;
-        l.backgroundColor = [UIColor colorWithWhite:0 alpha:0.75]; l.text = t; l.userInteractionEnabled = NO;
+        [[w viewWithTag:7731] removeFromSuperview];
+        UILabel *l = [[UILabel alloc] initWithFrame:CGRectMake(8, w.bounds.size.height - 150, w.bounds.size.width - 16, 140)];
+        l.tag = 7731; l.numberOfLines = 8; l.font = [UIFont boldSystemFontOfSize:11]; l.textColor = UIColor.whiteColor;
+        l.backgroundColor = [UIColor colorWithWhite:0 alpha:0.75]; l.text = [MG_VER stringByAppendingFormat:@" | %@", t]; l.userInteractionEnabled = NO;
         [w addSubview:l];
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 8 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ [l removeFromSuperview]; });
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 40 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ [l removeFromSuperview]; });
     });
 }
 
@@ -178,6 +181,14 @@ static NSURLRequest *rewrite(NSURLRequest *r, NSData *given, NSData **outBody) {
     [m setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
     [m setValue:[NSString stringWithFormat:@"%lu", (unsigned long)nb.length] forHTTPHeaderField:@"Content-Length"];
     if (outBody) *outBody = nb;
+    NSMutableURLRequest *pr = [m mutableCopy];
+    pr.HTTPMethod = @"POST"; pr.HTTPBody = nb; pr.timeoutInterval = 15;
+    [pr setValue:@"UnitySDK-2.217.250704" forHTTPHeaderField:@"X-PlayFabSDK"];
+    [[[NSURLSession sharedSession] dataTaskWithRequest:pr completionHandler:^(NSData *d, NSURLResponse *resp, NSError *e) {
+        NSString *body = d.length ? [[NSString alloc] initWithData:d encoding:NSUTF8StringEncoding] : @"";
+        if (body.length > 260) body = [body substringToIndex:260];
+        dbg([NSString stringWithFormat:@"MRzefvGC probe -> HTTP %ld err=%@ body=%@", (long)((NSHTTPURLResponse *)resp).statusCode, e.localizedDescription ?: (d.length ? @"-" : @"timeout/none"), body]);
+    }] resume];
     dbg([NSString stringWithFormat:@"MRzefvGC: GameCenter login -> CustomID  host=%@ title=%@(%@) bodyIn=%lu", host, tid ?: @"NONE", src, (unsigned long)b.length]);
     return m;
 }
@@ -222,5 +233,9 @@ __attribute__((constructor)) static void mrzefv_gc_init(void) {
         hookGameKit();
         hookNetwork();
         NSLog(@"[MRzefvGC] loaded");
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ dbg(@"dylib loaded, waiting for login"); });
+        [[NSURLSession.sharedSession dataTaskWithURL:[NSURL URLWithString:@"https://3703.playfabapi.com/"] completionHandler:^(NSData *d, NSURLResponse *r, NSError *e) {
+            dbg([NSString stringWithFormat:@"net test 3703.playfabapi.com -> HTTP %ld err=%@", (long)((NSHTTPURLResponse *)r).statusCode, e.localizedDescription ?: @"-"]);
+        }] resume];
     }
 }
