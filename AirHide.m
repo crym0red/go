@@ -438,7 +438,41 @@ static UIImage *AHSig(void) {
     return nil;
 }
 
-static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NSString *sub) {
+static CGFloat AHPPQFrac(void) {
+    long d = 0, h = 0, m = 0;
+    if (sscanf(AHPPQTimer().UTF8String, "%ldd %ldh %ldm", &d, &h, &m) != 3) return 0.02;
+    double secs = d * 86400.0 + h * 3600.0 + m * 60.0;
+    return (CGFloat)MAX(0.02, MIN(1.0, secs / (365 * 86400.0)));
+}
+
+static UIView *AHCheckRow(NSString *title, UIColor *tc, UIColor *cc, NSString *sub) {
+    UIView *circ = [UIView new];
+    circ.translatesAutoresizingMaskIntoConstraints = NO;
+    circ.backgroundColor = [cc colorWithAlphaComponent:0.18];
+    circ.layer.cornerRadius = 13;
+    [circ.widthAnchor constraintEqualToConstant:26].active = YES;
+    [circ.heightAnchor constraintEqualToConstant:26].active = YES;
+    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:13 weight:UIImageSymbolWeightBold];
+    UIImageView *iv = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"checkmark" withConfiguration:cfg]];
+    iv.tintColor = cc;
+    iv.translatesAutoresizingMaskIntoConstraints = NO;
+    [circ addSubview:iv];
+    [iv.centerXAnchor constraintEqualToAnchor:circ.centerXAnchor].active = YES;
+    [iv.centerYAnchor constraintEqualToAnchor:circ.centerYAnchor].active = YES;
+    NSMutableAttributedString *a = [[NSMutableAttributedString alloc] initWithString:title attributes:@{
+        NSFontAttributeName: [UIFont systemFontOfSize:14.5 weight:UIFontWeightSemibold], NSForegroundColorAttributeName: tc }];
+    [a appendAttributedString:[[NSAttributedString alloc] initWithString:[@"  \u00B7  " stringByAppendingString:sub] attributes:@{
+        NSFontAttributeName: [UIFont systemFontOfSize:13], NSForegroundColorAttributeName: [UIColor colorWithWhite:1 alpha:0.6] }]];
+    UILabel *l = AHLabel(nil, [UIFont systemFontOfSize:13], UIColor.whiteColor, 0);
+    l.attributedText = a;
+    UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[circ, l]];
+    row.axis = UILayoutConstraintAxisHorizontal;
+    row.alignment = UIStackViewAlignmentCenter;
+    row.spacing = 10;
+    return row;
+}
+
+__attribute__((unused)) static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NSString *sub) {
     UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:28 weight:UIImageSymbolWeightRegular];
     UIImageView *iv = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:sym withConfiguration:cfg]];
     iv.tintColor = [UIColor colorWithRed:232/255.0 green:154/255.0 blue:74/255.0 alpha:1];
@@ -464,6 +498,8 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
 @property (nonatomic, strong) UIView *card;
 @property (nonatomic, strong) UIButton *btn;
 @property (nonatomic, strong) UIScrollView *scroll;
+@property (nonatomic, strong) UIView *dashView;
+@property (nonatomic, strong) CAShapeLayer *dashLayer;
 @property (nonatomic, strong) NSTimer *timer;
 @property (nonatomic) NSInteger left;
 @property (nonatomic, copy) void (^onDone)(void);
@@ -511,29 +547,24 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
     // ---- header: [PPQ timer ........ signature] / [icon | name + bundle + tagline] ----
     UIImageView *icon = [[UIImageView alloc] initWithImage:AHAppIcon()];
     icon.contentMode = UIViewContentModeScaleAspectFill;
-    icon.layer.cornerRadius = 14;
+    icon.layer.cornerRadius = 13;
     icon.layer.cornerCurve = kCACornerCurveContinuous;
     icon.layer.masksToBounds = YES;
     icon.translatesAutoresizingMaskIntoConstraints = NO;
-    [icon.widthAnchor constraintEqualToConstant:60].active = YES;
-    [icon.heightAnchor constraintEqualToConstant:60].active = YES;
+    [icon.widthAnchor constraintEqualToConstant:52].active = YES;
+    [icon.heightAnchor constraintEqualToConstant:52].active = YES;
 
     UILabel *name = AHLabel([NSString stringWithFormat:@"[ %@ ]", AHAppName()],
-                            [UIFont systemFontOfSize:21 weight:UIFontWeightSemibold], UIColor.whiteColor, 1);
+                            [UIFont systemFontOfSize:19 weight:UIFontWeightSemibold], UIColor.whiteColor, 1);
     name.adjustsFontSizeToFitWidth = YES;
     name.minimumScaleFactor = 0.6;
     UILabel *bid = AHLabel(NSBundle.mainBundle.bundleIdentifier ?: @"--",
-                           [UIFont systemFontOfSize:13], [UIColor colorWithWhite:1 alpha:0.55], 1);
+                           [UIFont systemFontOfSize:12.5], [UIColor colorWithWhite:1 alpha:0.55], 1);
     bid.adjustsFontSizeToFitWidth = YES;
     bid.minimumScaleFactor = 0.6;
-    UILabel *tag = AHLabel(@"AirCore is now active, helping you keep your certificate safer.",
-                           [UIFont systemFontOfSize:12.5], [UIColor colorWithWhite:1 alpha:0.55], 0);
-    UIStackView *txt = [[UIStackView alloc] initWithArrangedSubviews:@[name, bid, tag]];
+    UIStackView *txt = [[UIStackView alloc] initWithArrangedSubviews:@[name, bid]];
     txt.axis = UILayoutConstraintAxisVertical;
-    txt.spacing = 3;
-    [txt setCustomSpacing:6 afterView:bid];
-    txt.layoutMarginsRelativeArrangement = YES;
-    txt.layoutMargins = UIEdgeInsetsMake(2, 0, 0, 0);
+    txt.spacing = 2;
 
     UIImageView *sigIv = [[UIImageView alloc] initWithImage:AHSig()];
     sigIv.tintColor = AHOrange();
@@ -563,30 +594,56 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
     [rt setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
     [rt setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
 
-    UIFont *pf = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
-    UILabel *ppqL = AHLabel(nil, pf, AHGreen(), 1);
-    NSMutableAttributedString *ppq = [[NSMutableAttributedString alloc] initWithString:@"PPQ TiMER" attributes:@{
-        NSFontAttributeName: pf, NSForegroundColorAttributeName: AHGreen() }];
-    [ppq appendAttributedString:[[NSAttributedString alloc] initWithString:[@" : " stringByAppendingString:AHPPQTimer()] attributes:@{
-        NSFontAttributeName: [UIFont systemFontOfSize:13], NSForegroundColorAttributeName: AHGray() }]];
-    ppqL.attributedText = ppq;
-    ppqL.adjustsFontSizeToFitWidth = YES;
-    ppqL.minimumScaleFactor = 0.7;
-    ppqL.transform = CGAffineTransformMakeTranslation(0, -6);
+    UIFont *pf = [UIFont systemFontOfSize:12.5 weight:UIFontWeightMedium];
+    UILabel *ppqT = AHLabel(@"PPQ TiMER", pf, AHGreen(), 1);
+    UILabel *ppqV = AHLabel(AHPPQTimer(), [UIFont systemFontOfSize:12.5 weight:UIFontWeightMedium],
+                            [UIColor colorWithWhite:1 alpha:0.8], 1);
+    ppqV.textAlignment = NSTextAlignmentRight;
+    [ppqT setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    UIStackView *ppqRow = [[UIStackView alloc] initWithArrangedSubviews:@[ppqT, ppqV]];
+    ppqRow.axis = UILayoutConstraintAxisHorizontal;
+    ppqRow.spacing = 8;
+    UIView *track = [UIView new];
+    track.translatesAutoresizingMaskIntoConstraints = NO;
+    track.backgroundColor = [UIColor colorWithWhite:1 alpha:0.12];
+    track.layer.cornerRadius = 2.5;
+    [track.heightAnchor constraintEqualToConstant:5].active = YES;
+    UIView *fill = [UIView new];
+    fill.translatesAutoresizingMaskIntoConstraints = NO;
+    fill.backgroundColor = AHGreen();
+    fill.layer.cornerRadius = 2.5;
+    [track addSubview:fill];
+    [NSLayoutConstraint activateConstraints:@[
+        [fill.leadingAnchor constraintEqualToAnchor:track.leadingAnchor],
+        [fill.topAnchor constraintEqualToAnchor:track.topAnchor],
+        [fill.bottomAnchor constraintEqualToAnchor:track.bottomAnchor],
+        [fill.widthAnchor constraintEqualToAnchor:track.widthAnchor multiplier:AHPPQFrac()],
+    ]];
+    UIStackView *ppqCol = [[UIStackView alloc] initWithArrangedSubviews:@[ppqRow, track]];
+    ppqCol.axis = UILayoutConstraintAxisVertical;
+    ppqCol.spacing = 7;
+    ppqCol.layoutMarginsRelativeArrangement = YES;
+    ppqCol.layoutMargins = UIEdgeInsetsMake(10, 12, 10, 12);
+    UIView *ppqBox = [UIView new];
+    ppqBox.translatesAutoresizingMaskIntoConstraints = NO;
+    ppqBox.backgroundColor = [AHGreen() colorWithAlphaComponent:0.10];
+    ppqBox.layer.cornerRadius = 14;
+    ppqBox.layer.cornerCurve = kCACornerCurveContinuous;
+    [ppqBox addSubview:ppqCol];
+    AHPin(ppqCol, ppqBox);
 
-    UIStackView *strip = [[UIStackView alloc] initWithArrangedSubviews:@[ppqL, rt]];
-    strip.axis = UILayoutConstraintAxisHorizontal;
-    strip.alignment = UIStackViewAlignmentTop;
-    strip.spacing = 10;
+    UILabel *tag = AHLabel(@"AirCore is now active, helping you keep your certificate safer.",
+                           [UIFont systemFontOfSize:12.5], [UIColor colorWithWhite:1 alpha:0.55], 0);
 
-    UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[icon, txt]];
-    row.axis = UILayoutConstraintAxisHorizontal;
-    row.alignment = UIStackViewAlignmentTop;
-    row.spacing = 12;
+    UIStackView *hdr = [[UIStackView alloc] initWithArrangedSubviews:@[icon, txt, rt]];
+    hdr.axis = UILayoutConstraintAxisHorizontal;
+    hdr.alignment = UIStackViewAlignmentCenter;
+    hdr.spacing = 12;
+    [txt setContentHuggingPriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
 
-    UIStackView *head = [[UIStackView alloc] initWithArrangedSubviews:@[strip, row]];
+    UIStackView *head = [[UIStackView alloc] initWithArrangedSubviews:@[hdr, ppqBox, tag]];
     head.axis = UILayoutConstraintAxisVertical;
-    head.spacing = -30;
+    head.spacing = 12;
     head.translatesAutoresizingMaskIntoConstraints = NO;
     [_card addSubview:head];
 
@@ -665,28 +722,28 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
     row1.spacing = 8;
     [lw.widthAnchor constraintEqualToAnchor:rw.widthAnchor].active = YES;
 
-    UIView *hair = [UIView new];
-    hair.backgroundColor = [UIColor colorWithWhite:1 alpha:0.12];
-    hair.translatesAutoresizingMaskIntoConstraints = NO;
-    [hair.heightAnchor constraintEqualToConstant:0.5].active = YES;
-    [body addArrangedSubview:hair];
-    [body addArrangedSubview:row1];
-    [body setCustomSpacing:16 afterView:row1];
+    _dashView = [UIView new];
+    _dashView.translatesAutoresizingMaskIntoConstraints = NO;
+    [_dashView.heightAnchor constraintEqualToConstant:1].active = YES;
+    _dashLayer = [CAShapeLayer layer];
+    _dashLayer.strokeColor = [UIColor colorWithWhite:1 alpha:0.22].CGColor;
+    _dashLayer.lineWidth = 1;
+    _dashLayer.lineDashPattern = @[@5, @4];
+    [_dashView.layer addSublayer:_dashLayer];
+    [body addArrangedSubview:_dashView];
+    [body setCustomSpacing:14 afterView:_dashView];
 
-    [body addArrangedSubview:AHFeature(@"checkmark.shield", @"AIRCORE PROTECTiON", UIColor.whiteColor,
+    [body addArrangedSubview:AHCheckRow(@"AIRCORE PROTECTiON", UIColor.whiteColor, AHOrange(),
         @"Blocks risky Apple endpoints to help you keep your certificate alive while you use this app.")];
-    [body addArrangedSubview:AHFeature(@"hand.tap", @"ANTiPiRACY SiGNATURE", UIColor.whiteColor,
+    [body addArrangedSubview:AHCheckRow(@"ANTiPiRACY SiGNATURE", UIColor.whiteColor, AHOrange(),
         @"App was Downloaded from AirShare.lol")];
-    [body addArrangedSubview:AHFeature(@"info.circle", @"AirShare REPOSiTORY", AHGreen(),
+    [body addArrangedSubview:AHCheckRow(@"AirShare REPOSiTORY", AHGreen(), AHGreen(),
         @"Trusted status. This app was scanned & verified!")];
-
-    UILabel *more = AHLabel(@"& even more…", [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold], UIColor.whiteColor, 1);
-    UILabel *revoke = AHLabel(@"App can only be revoked if apple invalidates AppiD.",
-                              [UIFont systemFontOfSize:13], [UIColor colorWithWhite:1 alpha:0.55], 0);
-    UIStackView *moreCol = [[UIStackView alloc] initWithArrangedSubviews:@[more, revoke]];
-    moreCol.axis = UILayoutConstraintAxisVertical;
-    moreCol.spacing = 3;
-    [body addArrangedSubview:moreCol];
+    [body addArrangedSubview:row1];
+    UILabel *more = AHLabel(@"& even more\u2026 App can only be revoked if apple invalidates AppiD.",
+                            [UIFont systemFontOfSize:12], [UIColor colorWithWhite:1 alpha:0.5], 0);
+    more.textAlignment = NSTextAlignmentCenter;
+    [body addArrangedSubview:more];
 
     [NSLayoutConstraint activateConstraints:@[
         [head.topAnchor constraintEqualToAnchor:_card.topAnchor constant:16],
@@ -698,7 +755,7 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
         [_btn.bottomAnchor constraintEqualToAnchor:_card.bottomAnchor constant:-14],
         [_btn.heightAnchor constraintEqualToConstant:46],
 
-        [_scroll.topAnchor constraintEqualToAnchor:head.bottomAnchor constant:16],
+        [_scroll.topAnchor constraintEqualToAnchor:head.bottomAnchor constant:12],
         [_scroll.bottomAnchor constraintEqualToAnchor:_btn.topAnchor constant:-16],
         [_scroll.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:18],
         [_scroll.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-18],
@@ -715,6 +772,15 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
     fit.active = YES;
 
     _card.transform = CGAffineTransformMakeTranslation(0, 500);
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    CGFloat w = _dashView.bounds.size.width;
+    UIBezierPath *p = [UIBezierPath bezierPath];
+    [p moveToPoint:CGPointMake(0, 0.5)];
+    [p addLineToPoint:CGPointMake(w, 0.5)];
+    _dashLayer.path = p.CGPath;
 }
 
 - (void)viewDidAppear:(BOOL)animated {
