@@ -34,6 +34,27 @@ static IMP hookIMP(Class c, SEL s, id blk) {
     return orig;
 }
 
+
+static void dbg(NSString *t) {
+    NSLog(@"[MRzefvGC] %@", t);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIWindow *w = nil;
+        for (UIScene *sc in UIApplication.sharedApplication.connectedScenes) {
+            if ([sc isKindOfClass:UIWindowScene.class]) {
+                for (UIWindow *x in ((UIWindowScene *)sc).windows) { if (x.isKeyWindow) { w = x; break; } }
+                if (!w) w = ((UIWindowScene *)sc).windows.firstObject;
+            }
+            if (w) break;
+        }
+        if (!w) return;
+        UILabel *l = [[UILabel alloc] initWithFrame:CGRectMake(8, w.bounds.size.height - 70, w.bounds.size.width - 16, 60)];
+        l.numberOfLines = 3; l.font = [UIFont boldSystemFontOfSize:11]; l.textColor = UIColor.whiteColor;
+        l.backgroundColor = [UIColor colorWithWhite:0 alpha:0.75]; l.text = t; l.userInteractionEnabled = NO;
+        [w addSubview:l];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 8 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ [l removeFromSuperview]; });
+    });
+}
+
 #pragma mark - GameKit
 
 static void hookGameKit(void) {
@@ -65,6 +86,49 @@ static void hookGameKit(void) {
     });
 }
 
+
+#pragma mark - Title ID scan
+
+static NSString *scanTitle(void) {
+    static NSString *found; static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSString *root = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Data"];
+        NSFileManager *fm = NSFileManager.defaultManager;
+        NSArray *subs = [fm subpathsAtPath:root];
+        for (NSString *rel in subs) {
+            NSString *last = rel.lastPathComponent.lowercaseString;
+            if (!([last hasSuffix:@".assets"] || [last hasPrefix:@"globalgamemanagers"] || [last hasPrefix:@"level"] || [last isEqualToString:@"data.unity3d"])) continue;
+            NSData *d = [NSData dataWithContentsOfFile:[root stringByAppendingPathComponent:rel] options:NSDataReadingMappedIfSafe error:nil];
+            if (d.length < 64) continue;
+            const uint8_t *b = d.bytes; size_t n = d.length;
+            const char *needle = "playfabapi.com"; size_t nl = strlen(needle);
+            const uint8_t *cur = b;
+            while (cur < b + n) {
+                const uint8_t *hit = memmem(cur, (size_t)(b + n - cur), needle, nl);
+                if (!hit) break;
+                long pos = hit - b;
+                long lo = pos - 200 < 0 ? 0 : pos - 200;
+                long hi = pos + 200 > (long)n - 8 ? (long)n - 8 : pos + 200;
+                for (long i = lo; i < hi; i++) {
+                    uint32_t len; memcpy(&len, b + i, 4);
+                    if (len < 4 || len > 6) continue;
+                    BOOL ok = YES;
+                    for (uint32_t k = 0; k < len; k++) {
+                        uint8_t ch = b[i + 4 + k];
+                        if (!((ch >= '0' && ch <= '9') || (ch >= 'A' && ch <= 'F'))) { ok = NO; break; }
+                    }
+                    if (!ok) continue;
+                    if (b[i + 4 + len] != 0) continue;
+                    found = [[NSString alloc] initWithBytes:b + i + 4 length:len encoding:NSASCIIStringEncoding];
+                    return;
+                }
+                cur = hit + nl;
+            }
+        }
+    });
+    return found;
+}
+
 #pragma mark - PlayFab
 
 static NSData *readStream(NSInputStream *s) {
@@ -91,7 +155,15 @@ static NSURLRequest *rewrite(NSURLRequest *r, NSData *given, NSData **outBody) {
     id j = b.length ? [NSJSONSerialization JSONObjectWithData:b options:0 error:nil] : nil;
     NSDictionary *o = [j isKindOfClass:NSDictionary.class] ? j : @{};
     NSMutableDictionary *n = [NSMutableDictionary dictionary];
-    if (o[@"TitleId"]) n[@"TitleId"] = o[@"TitleId"];
+    NSString *tid = [o[@"TitleId"] isKindOfClass:NSString.class] ? o[@"TitleId"] : nil;
+    NSString *host = r.URL.host.lowercaseString;
+    if (!tid.length && [host hasSuffix:@".playfabapi.com"]) tid = [host componentsSeparatedByString:@"."].firstObject;
+    if (!tid.length) tid = [NSBundle.mainBundle objectForInfoDictionaryKey:@"PlayFabTitleId"];
+    if (!tid.length) tid = [NSUserDefaults.standardUserDefaults stringForKey:@"mrzefv.gc.title"];
+    NSString *src = tid.length ? @"req" : @"";
+    if (!tid.length) { tid = scanTitle(); if (tid.length) src = @"scan"; }
+    if (tid.length) [NSUserDefaults.standardUserDefaults setObject:tid forKey:@"mrzefv.gc.title"];
+    if (tid.length) n[@"TitleId"] = tid;
     if (o[@"InfoRequestParameters"]) n[@"InfoRequestParameters"] = o[@"InfoRequestParameters"];
     n[@"CustomId"] = CID();
     n[@"CreateAccount"] = @YES;
@@ -106,6 +178,7 @@ static NSURLRequest *rewrite(NSURLRequest *r, NSData *given, NSData **outBody) {
     [m setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
     [m setValue:[NSString stringWithFormat:@"%lu", (unsigned long)nb.length] forHTTPHeaderField:@"Content-Length"];
     if (outBody) *outBody = nb;
+    dbg([NSString stringWithFormat:@"MRzefvGC: GameCenter login -> CustomID  host=%@ title=%@(%@) bodyIn=%lu", host, tid ?: @"NONE", src, (unsigned long)b.length]);
     return m;
 }
 
