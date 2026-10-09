@@ -14,18 +14,28 @@
 //   - 0.1s sweep for 25s after launch / foreground as a safety net.
 //
 // Config below. Kill switch: NSUserDefaults bool "AirHideOff" = YES.
-// Onboarding: shown once per install. Set AH_ONBOARD_EVERY_LAUNCH to 1 to show
-// it on every launch. NSUserDefaults bool "AirHideOnboardOff" = YES hides it.
+// Onboarding: shows on every cold launch and every return from background.
+// Set AH_ONBOARD_EVERY_LAUNCH to 0 for once-per-install.
+// NSUserDefaults bool "AirHideOnboardOff" = YES hides it.
+// Haptics / vibration / sounds triggered by the blocked splash are muted too.
 
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <execinfo.h>
 #import <dlfcn.h>
 #import <string.h>
+#import <AudioToolbox/AudioToolbox.h>
+#import <CoreHaptics/CoreHaptics.h>
+
+// Optional: put AirShareLogo.png in the repo root; build.sh embeds it here.
+#if __has_include("AirShareLogo.h")
+#include "AirShareLogo.h"
+#define AH_HAS_LOGO 1
+#endif
 
 #pragma mark - Config
 
-#define AH_ONBOARD_EVERY_LAUNCH 0
+#define AH_ONBOARD_EVERY_LAUNCH 1
 #define AH_COUNTDOWN_SECONDS 5
 
 static NSArray<NSString *> *AHBlockNames(void) {
@@ -151,6 +161,7 @@ static void AHCollect(UIView *v, NSMutableSet *found) {
 }
 
 static UIView *AHFindMarkerView(UIView *v) {
+    if (v.hidden || v.alpha < 0.01) return nil;
     if ([v isKindOfClass:UILabel.class]) {
         UILabel *l = (UILabel *)v;
         if (AHMarkerIndex(l.text ?: l.attributedText.string) >= 0) return v;
@@ -213,9 +224,17 @@ static void AHKill(UIView *c) {
         [vc dismissViewControllerAnimated:NO completion:nil];
     } else if (w && w != main && w.rootViewController.view == c) {
         w.hidden = YES;
-    } else {
-        [c removeFromSuperview];
     }
+    // no removeFromSuperview: the owner keeps running (and finishes) its own
+    // countdown / cleanup, so nothing is left looping in the background
+}
+
+static BOOL AHAncestorHidden(UIView *v) {
+    while (v) {
+        if (v.hidden || v.alpha < 0.01) return YES;
+        v = v.superview;
+    }
+    return NO;
 }
 
 static UIView *AHFindContainer(UIView *start) {
@@ -236,6 +255,7 @@ static UIView *AHFindContainer(UIView *start) {
 
 static BOOL AHTryLabel(UIView *label) {
     if (AHOff()) return NO;
+    if (AHAncestorHidden(label)) return NO;
     UIView *c = AHFindContainer(label);
     if (!c) return NO;
     AHKill(c);
@@ -261,6 +281,7 @@ static void AHKillIfFullAsync(UIView *v) {
 #pragma mark - Sweep
 
 static void AHSweepView(UIView *v, UIWindow *w) {
+    if (v.hidden || v.alpha < 0.01) return;
     if (AHClassBlocked(object_getClass(v)) && AHIsFull(v, w)) { AHKill(v); return; }
     for (UIView *s in [v.subviews copy]) AHSweepView(s, w);
 }
@@ -275,7 +296,6 @@ static void AHSweepVC(UIViewController *vc) {
             vc.view.hidden = YES;
             vc.view.alpha = 0;
             vc.view.userInteractionEnabled = NO;
-            [vc.view removeFromSuperview];
         }
         return;
     }
@@ -314,6 +334,23 @@ static void AHStartTimer(void) {
 static UIColor *AHOrange(void) { return [UIColor colorWithRed:196/255.0 green:138/255.0 blue:75/255.0 alpha:1]; }
 static UIColor *AHGreen(void)  { return [UIColor colorWithRed:92/255.0 green:200/255.0 blue:122/255.0 alpha:1]; }
 static UIColor *AHGray(void)   { return [UIColor colorWithWhite:1 alpha:0.62]; }
+
+static UIImage *AHAirShareLogo(void) {
+#ifdef AH_HAS_LOGO
+    NSData *d = [NSData dataWithBytes:AirShareLogo_png length:AirShareLogo_png_len];
+    UIImage *img = [UIImage imageWithData:d scale:UIScreen.mainScreen.scale];
+    if (img) return img;
+#endif
+    UIGraphicsImageRenderer *r = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(64, 64)];
+    return [r imageWithActions:^(UIGraphicsImageRendererContext *c) {
+        [[UIColor colorWithRed:196/255.0 green:138/255.0 blue:75/255.0 alpha:1] setFill];
+        [[UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, 64, 64) cornerRadius:16] fill];
+        NSDictionary *a = @{ NSFontAttributeName: [UIFont systemFontOfSize:38 weight:UIFontWeightBold],
+                             NSForegroundColorAttributeName: [UIColor colorWithWhite:0.1 alpha:1] };
+        CGSize z = [@"A" sizeWithAttributes:a];
+        [@"A" drawAtPoint:CGPointMake((64 - z.width) / 2, (64 - z.height) / 2) withAttributes:a];
+    }];
+}
 
 static NSString *AHAppName(void) {
     NSDictionary *i = NSBundle.mainBundle.infoDictionary;
@@ -386,19 +423,6 @@ static UIImage *AHSig(void) {
         if (i) return i;
     }
     return nil;
-}
-
-static UIView *AHBadgeRow(NSString *sym, NSString *txt) {
-    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:13 weight:UIImageSymbolWeightRegular];
-    UIImageView *iv = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:sym withConfiguration:cfg]];
-    iv.tintColor = [UIColor colorWithRed:232/255.0 green:154/255.0 blue:74/255.0 alpha:1];
-    iv.contentMode = UIViewContentModeScaleAspectFit;
-    UILabel *l = AHLabel(txt, [UIFont systemFontOfSize:11 weight:UIFontWeightMedium], UIColor.whiteColor, 1);
-    UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[iv, l]];
-    row.axis = UILayoutConstraintAxisHorizontal;
-    row.alignment = UIStackViewAlignmentCenter;
-    row.spacing = 5;
-    return row;
 }
 
 static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NSString *sub) {
@@ -515,21 +539,9 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
     sigRow.alignment = UIStackViewAlignmentCenter;
     sigRow.spacing = 6;
 
-    UIStackView *rt = [[UIStackView alloc] initWithArrangedSubviews:@[sigRow]];
-    rt.axis = UILayoutConstraintAxisVertical;
-    rt.alignment = UIStackViewAlignmentTrailing;
-    rt.spacing = 4;
-    [rt setCustomSpacing:6 afterView:sigRow];
-    NSArray *badges = @[
-        @[@"dollarsign.circle", @"✓ FREE"],
-        @[@"arrow.down.to.line", @"Download(s)"],
-        @[@"icloud.slash", @"Watch Offline"],
-        @[@"nosign", @"No Ads/Account"],
-        @[@"arrow.triangle.2.circlepath", @"Anti-Update(s)"],
-    ];
-    for (NSArray *b in badges) [rt addArrangedSubview:AHBadgeRow(b[0], b[1])];
-    [rt setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-    [rt setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [sigRow setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [sigRow setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    UIView *rt = sigRow;
 
     UIStackView *head = [[UIStackView alloc] initWithArrangedSubviews:@[icon, txt, rt]];
     head.axis = UILayoutConstraintAxisHorizontal;
@@ -567,33 +579,38 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
     body.translatesAutoresizingMaskIntoConstraints = NO;
     [_scroll addSubview:body];
 
-    UIFont *lf = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
-    UIImageView *sic = [[UIImageView alloc] initWithImage:AHAppIcon()];
+    UIFont *lf = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+    UIImageView *sic = [[UIImageView alloc] initWithImage:AHAirShareLogo()];
     sic.contentMode = UIViewContentModeScaleAspectFill;
-    sic.layer.cornerRadius = 5;
+    sic.layer.cornerRadius = 6;
     sic.layer.masksToBounds = YES;
     sic.translatesAutoresizingMaskIntoConstraints = NO;
-    [sic.widthAnchor constraintEqualToConstant:20].active = YES;
-    [sic.heightAnchor constraintEqualToConstant:20].active = YES;
+    [sic.widthAnchor constraintEqualToConstant:24].active = YES;
+    [sic.heightAnchor constraintEqualToConstant:24].active = YES;
     UILabel *l1 = AHLabel(@"AirShare.lol", lf, AHGreen(), 1);
     UIStackView *l1s = [[UIStackView alloc] initWithArrangedSubviews:@[sic, l1]];
     l1s.axis = UILayoutConstraintAxisHorizontal;
     l1s.alignment = UIStackViewAlignmentCenter;
-    l1s.spacing = 7;
-    UILabel *l2 = AHLabel(@"Ł  DONATE LTC", lf, [UIColor colorWithWhite:1 alpha:0.9], 1);
+    l1s.spacing = 8;
+    UILabel *l2 = AHLabel(@"\u0141  DONATE LTC", lf, [UIColor colorWithWhite:1 alpha:0.9], 1);
+    UIStackView *row1 = [[UIStackView alloc] initWithArrangedSubviews:@[l1s, l2]];
+    row1.axis = UILayoutConstraintAxisHorizontal;
+    row1.alignment = UIStackViewAlignmentCenter;
+    row1.distribution = UIStackViewDistributionEqualSpacing;
+
     UILabel *l3 = AHLabel(nil, lf, AHGreen(), 1);
     NSMutableAttributedString *ppq = [[NSMutableAttributedString alloc] initWithString:@"PPQ TiMER" attributes:@{
         NSFontAttributeName: lf, NSForegroundColorAttributeName: AHGreen() }];
     [ppq appendAttributedString:[[NSAttributedString alloc] initWithString:[@" : " stringByAppendingString:AHPPQTimer()] attributes:@{
-        NSFontAttributeName: [UIFont systemFontOfSize:13], NSForegroundColorAttributeName: AHGray() }]];
+        NSFontAttributeName: [UIFont systemFontOfSize:14], NSForegroundColorAttributeName: AHGray() }]];
     l3.attributedText = ppq;
-    for (UILabel *l in @[l1, l2, l3]) { l.adjustsFontSizeToFitWidth = YES; l.minimumScaleFactor = 0.7; }
-    UIStackView *links = [[UIStackView alloc] initWithArrangedSubviews:@[l1s, l2, l3]];
-    links.axis = UILayoutConstraintAxisHorizontal;
-    links.alignment = UIStackViewAlignmentCenter;
-    links.distribution = UIStackViewDistributionEqualSpacing;
+
+    UIStackView *links = [[UIStackView alloc] initWithArrangedSubviews:@[row1, l3]];
+    links.axis = UILayoutConstraintAxisVertical;
+    links.alignment = UIStackViewAlignmentFill;
+    links.spacing = 10;
     [body addArrangedSubview:links];
-    [body setCustomSpacing:14 afterView:links];
+    [body setCustomSpacing:16 afterView:links];
 
     [body addArrangedSubview:AHFeature(@"checkmark.shield", @"AIRCORE PROTECTiON", UIColor.whiteColor,
         @"Blocks risky Apple endpoints to help you keep your certificate alive while you use this app.")];
@@ -708,10 +725,11 @@ static void AHShowOnboarding(void) {
     w.hidden = NO;
 }
 
+static BOOL gNeedOnb = YES;
+
 static void AHScheduleOnboarding(void) {
-    static BOOL once;
-    if (once) return;
-    once = YES;
+    if (!gNeedOnb) return;
+    gNeedOnb = NO;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
                    dispatch_get_main_queue(), ^{ AHShowOnboarding(); });
 }
@@ -811,6 +829,77 @@ static void AHAfterAdd(UIView *parent, UIView *child) {
 }
 @end
 
+#pragma mark - Haptics / sounds from the blocked splash
+
+static BOOL AHMute(void) {
+    return !AHOff() && AHStackFromBlocked();
+}
+
+@interface UIImpactFeedbackGenerator (AirHide)
+@end
+@implementation UIImpactFeedbackGenerator (AirHide)
+- (void)ah_impactOccurred { if (AHMute()) return; [self ah_impactOccurred]; }
+- (void)ah_impactOccurredWithIntensity:(CGFloat)i { if (AHMute()) return; [self ah_impactOccurredWithIntensity:i]; }
+@end
+
+@interface UINotificationFeedbackGenerator (AirHide)
+@end
+@implementation UINotificationFeedbackGenerator (AirHide)
+- (void)ah_notificationOccurred:(UINotificationFeedbackType)t { if (AHMute()) return; [self ah_notificationOccurred:t]; }
+@end
+
+@interface UISelectionFeedbackGenerator (AirHide)
+@end
+@implementation UISelectionFeedbackGenerator (AirHide)
+- (void)ah_selectionChanged { if (AHMute()) return; [self ah_selectionChanged]; }
+@end
+
+@interface CHHapticEngine (AirHide)
+@end
+@implementation CHHapticEngine (AirHide)
+- (BOOL)ah_startAndReturnError:(NSError **)e {
+    if (AHMute()) {
+        if (e) *e = [NSError errorWithDomain:@"AirHide" code:1 userInfo:nil];
+        return NO;
+    }
+    return [self ah_startAndReturnError:e];
+}
+- (BOOL)ah_playPatternFromURL:(NSURL *)u error:(NSError **)e {
+    if (AHMute()) return YES;
+    return [self ah_playPatternFromURL:u error:e];
+}
+- (BOOL)ah_playPatternFromData:(NSData *)d error:(NSError **)e {
+    if (AHMute()) return YES;
+    return [self ah_playPatternFromData:d error:e];
+}
+@end
+
+// AudioToolbox vibrate / alert sounds (dyld interpose)
+static void ah_AudioServicesPlaySystemSound(SystemSoundID s) {
+    if (AHMute()) return;
+    AudioServicesPlaySystemSound(s);
+}
+static void ah_AudioServicesPlayAlertSound(SystemSoundID s) {
+    if (AHMute()) return;
+    AudioServicesPlayAlertSound(s);
+}
+static void ah_AudioServicesPlaySystemSoundWithCompletion(SystemSoundID s, void (^c)(void)) {
+    if (AHMute()) { if (c) dispatch_async(dispatch_get_main_queue(), c); return; }
+    AudioServicesPlaySystemSoundWithCompletion(s, c);
+}
+static void ah_AudioServicesPlayAlertSoundWithCompletion(SystemSoundID s, void (^c)(void)) {
+    if (AHMute()) { if (c) dispatch_async(dispatch_get_main_queue(), c); return; }
+    AudioServicesPlayAlertSoundWithCompletion(s, c);
+}
+
+#define AH_INTERPOSE(R, O) \
+    __attribute__((used)) static struct { const void *r; const void *o; } _ahi_##O \
+    __attribute__((section("__DATA,__interpose"))) = { (const void *)(unsigned long)&R, (const void *)(unsigned long)&O };
+AH_INTERPOSE(ah_AudioServicesPlaySystemSound, AudioServicesPlaySystemSound)
+AH_INTERPOSE(ah_AudioServicesPlayAlertSound, AudioServicesPlayAlertSound)
+AH_INTERPOSE(ah_AudioServicesPlaySystemSoundWithCompletion, AudioServicesPlaySystemSoundWithCompletion)
+AH_INTERPOSE(ah_AudioServicesPlayAlertSoundWithCompletion, AudioServicesPlayAlertSoundWithCompletion)
+
 #pragma mark - Entry
 
 __attribute__((constructor))
@@ -826,6 +915,13 @@ static void AirHideInit(void) {
     AHSwz(UIViewController.class,
           @selector(presentViewController:animated:completion:),
           @selector(ah_presentViewController:animated:completion:));
+    AHSwz(UIImpactFeedbackGenerator.class, @selector(impactOccurred), @selector(ah_impactOccurred));
+    AHSwz(UIImpactFeedbackGenerator.class, @selector(impactOccurredWithIntensity:), @selector(ah_impactOccurredWithIntensity:));
+    AHSwz(UINotificationFeedbackGenerator.class, @selector(notificationOccurred:), @selector(ah_notificationOccurred:));
+    AHSwz(UISelectionFeedbackGenerator.class, @selector(selectionChanged), @selector(ah_selectionChanged));
+    AHSwz(CHHapticEngine.class, @selector(startAndReturnError:), @selector(ah_startAndReturnError:));
+    AHSwz(CHHapticEngine.class, @selector(playPatternFromURL:error:), @selector(ah_playPatternFromURL:error:));
+    AHSwz(CHHapticEngine.class, @selector(playPatternFromData:error:), @selector(ah_playPatternFromData:error:));
 
     dispatch_async(dispatch_get_main_queue(), ^{ AHStartTimer(); });
     [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidFinishLaunchingNotification
@@ -837,4 +933,9 @@ static void AirHideInit(void) {
         AHStartTimer();
         AHScheduleOnboarding();
     }];
+#if AH_ONBOARD_EVERY_LAUNCH
+    [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidEnterBackgroundNotification
+                                                    object:nil queue:NSOperationQueue.mainQueue
+                                                usingBlock:^(NSNotification *n) { gNeedOnb = YES; }];
+#endif
 }
