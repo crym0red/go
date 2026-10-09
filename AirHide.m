@@ -28,6 +28,10 @@
 #import <CoreHaptics/CoreHaptics.h>
 
 // Optional: put AirShareLogo.png in the repo root; build.sh embeds it here.
+#if __has_include("DelvekLogo.h")
+#include "DelvekLogo.h"
+#define AH_HAS_DELVEK 1
+#endif
 #if __has_include("AirShareLogo.h")
 #include "AirShareLogo.h"
 #define AH_HAS_LOGO 1
@@ -352,6 +356,15 @@ static UIImage *AHAirShareLogo(void) {
     }];
 }
 
+static UIImage *AHDelvekLogo(void) {
+#ifdef AH_HAS_DELVEK
+    NSData *d = [NSData dataWithBytes:DelvekLogo_png length:DelvekLogo_png_len];
+    return [UIImage imageWithData:d scale:UIScreen.mainScreen.scale];
+#else
+    return nil;
+#endif
+}
+
 static NSString *AHAppName(void) {
     NSDictionary *i = NSBundle.mainBundle.infoDictionary;
     return i[@"CFBundleDisplayName"] ?: i[@"CFBundleName"] ?: @"App";
@@ -495,7 +508,7 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
         [_card.topAnchor constraintGreaterThanOrEqualToAnchor:sg.topAnchor constant:12],
     ]];
 
-    // ---- header: icon | name + bundle + tagline | signature + badges ----
+    // ---- header: [PPQ timer ........ signature] / [icon | name + bundle + tagline] ----
     UIImageView *icon = [[UIImageView alloc] initWithImage:AHAppIcon()];
     icon.contentMode = UIViewContentModeScaleAspectFill;
     icon.layer.cornerRadius = 14;
@@ -520,7 +533,7 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
     txt.spacing = 3;
     [txt setCustomSpacing:6 afterView:bid];
     txt.layoutMarginsRelativeArrangement = YES;
-    txt.layoutMargins = UIEdgeInsetsMake(8, 0, 0, 0);
+    txt.layoutMargins = UIEdgeInsetsMake(2, 0, 0, 0);
 
     UIImageView *sigIv = [[UIImageView alloc] initWithImage:AHSig()];
     sigIv.tintColor = AHOrange();
@@ -541,12 +554,38 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
 
     [sigRow setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
     [sigRow setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-    UIView *rt = sigRow;
+    UILabel *botL = AHLabel(@"@FastDecryptBot", [UIFont systemFontOfSize:12],
+                            [UIColor colorWithWhite:1 alpha:0.55], 1);
+    UIStackView *rt = [[UIStackView alloc] initWithArrangedSubviews:@[sigRow, botL]];
+    rt.axis = UILayoutConstraintAxisVertical;
+    rt.alignment = UIStackViewAlignmentTrailing;
+    rt.spacing = 2;
+    [rt setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [rt setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
 
-    UIStackView *head = [[UIStackView alloc] initWithArrangedSubviews:@[icon, txt, rt]];
-    head.axis = UILayoutConstraintAxisHorizontal;
-    head.alignment = UIStackViewAlignmentTop;
-    head.spacing = 10;
+    UIFont *pf = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    UILabel *ppqL = AHLabel(nil, pf, AHGreen(), 1);
+    NSMutableAttributedString *ppq = [[NSMutableAttributedString alloc] initWithString:@"PPQ TiMER" attributes:@{
+        NSFontAttributeName: pf, NSForegroundColorAttributeName: AHGreen() }];
+    [ppq appendAttributedString:[[NSAttributedString alloc] initWithString:[@" : " stringByAppendingString:AHPPQTimer()] attributes:@{
+        NSFontAttributeName: [UIFont systemFontOfSize:13], NSForegroundColorAttributeName: AHGray() }]];
+    ppqL.attributedText = ppq;
+    ppqL.adjustsFontSizeToFitWidth = YES;
+    ppqL.minimumScaleFactor = 0.7;
+
+    UIStackView *strip = [[UIStackView alloc] initWithArrangedSubviews:@[ppqL, rt]];
+    strip.axis = UILayoutConstraintAxisHorizontal;
+    strip.alignment = UIStackViewAlignmentTop;
+    strip.spacing = 10;
+
+    UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[icon, txt]];
+    row.axis = UILayoutConstraintAxisHorizontal;
+    row.alignment = UIStackViewAlignmentTop;
+    row.spacing = 12;
+
+    UIStackView *head = [[UIStackView alloc] initWithArrangedSubviews:@[strip, row]];
+    head.axis = UILayoutConstraintAxisVertical;
+    head.spacing = 4;
     head.translatesAutoresizingMaskIntoConstraints = NO;
     [_card addSubview:head];
 
@@ -593,24 +632,45 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
     l1s.alignment = UIStackViewAlignmentCenter;
     l1s.spacing = 8;
     UILabel *l2 = AHLabel(@"\u0141  DONATE LTC", lf, [UIColor colorWithWhite:1 alpha:0.9], 1);
-    UIStackView *row1 = [[UIStackView alloc] initWithArrangedSubviews:@[l1s, l2]];
+    UILabel *l1b = AHLabel(@"DELvEK.NET", lf, AHGreen(), 1);
+    UIImageView *dic = [[UIImageView alloc] initWithImage:AHDelvekLogo()];
+    dic.contentMode = UIViewContentModeScaleAspectFit;
+    dic.translatesAutoresizingMaskIntoConstraints = NO;
+    [dic.widthAnchor constraintEqualToConstant:24].active = YES;
+    [dic.heightAnchor constraintEqualToConstant:24].active = YES;
+    dic.hidden = (dic.image == nil);
+    UIStackView *rgroup = [[UIStackView alloc] initWithArrangedSubviews:@[dic, l1b]];
+    rgroup.axis = UILayoutConstraintAxisHorizontal;
+    rgroup.alignment = UIStackViewAlignmentCenter;
+    rgroup.spacing = 6;
+    UIView *lw = [UIView new], *rw = [UIView new];
+    for (NSArray *p in @[@[l1s, lw, @YES], @[rgroup, rw, @NO]]) {
+        UIView *c = p[0], *w = p[1];
+        c.translatesAutoresizingMaskIntoConstraints = NO;
+        [w addSubview:c];
+        [c.centerYAnchor constraintEqualToAnchor:w.centerYAnchor].active = YES;
+        [c.topAnchor constraintGreaterThanOrEqualToAnchor:w.topAnchor].active = YES;
+        [c.bottomAnchor constraintLessThanOrEqualToAnchor:w.bottomAnchor].active = YES;
+        if ([p[2] boolValue]) { [c.leadingAnchor constraintEqualToAnchor:w.leadingAnchor].active = YES; [c.trailingAnchor constraintLessThanOrEqualToAnchor:w.trailingAnchor].active = YES; }
+        else { [c.trailingAnchor constraintEqualToAnchor:w.trailingAnchor].active = YES; [c.leadingAnchor constraintGreaterThanOrEqualToAnchor:w.leadingAnchor].active = YES; }
+    }
+    [lw.widthAnchor constraintEqualToAnchor:rw.widthAnchor].active = YES;
+    [l2 setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [l2 setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    for (UILabel *l in @[l1, l1b, l2]) { l.adjustsFontSizeToFitWidth = YES; l.minimumScaleFactor = 0.7; }
+    UIStackView *row1 = [[UIStackView alloc] initWithArrangedSubviews:@[lw, l2, rw]];
     row1.axis = UILayoutConstraintAxisHorizontal;
     row1.alignment = UIStackViewAlignmentCenter;
-    row1.distribution = UIStackViewDistributionEqualSpacing;
+    row1.distribution = UIStackViewDistributionFill;
+    row1.spacing = 8;
 
-    UILabel *l3 = AHLabel(nil, lf, AHGreen(), 1);
-    NSMutableAttributedString *ppq = [[NSMutableAttributedString alloc] initWithString:@"PPQ TiMER" attributes:@{
-        NSFontAttributeName: lf, NSForegroundColorAttributeName: AHGreen() }];
-    [ppq appendAttributedString:[[NSAttributedString alloc] initWithString:[@" : " stringByAppendingString:AHPPQTimer()] attributes:@{
-        NSFontAttributeName: [UIFont systemFontOfSize:14], NSForegroundColorAttributeName: AHGray() }]];
-    l3.attributedText = ppq;
-
-    UIStackView *links = [[UIStackView alloc] initWithArrangedSubviews:@[row1, l3]];
-    links.axis = UILayoutConstraintAxisVertical;
-    links.alignment = UIStackViewAlignmentFill;
-    links.spacing = 10;
-    [body addArrangedSubview:links];
-    [body setCustomSpacing:16 afterView:links];
+    UIView *hair = [UIView new];
+    hair.backgroundColor = [UIColor colorWithWhite:1 alpha:0.12];
+    hair.translatesAutoresizingMaskIntoConstraints = NO;
+    [hair.heightAnchor constraintEqualToConstant:0.5].active = YES;
+    [body addArrangedSubview:hair];
+    [body addArrangedSubview:row1];
+    [body setCustomSpacing:16 afterView:row1];
 
     [body addArrangedSubview:AHFeature(@"checkmark.shield", @"AIRCORE PROTECTiON", UIColor.whiteColor,
         @"Blocks risky Apple endpoints to help you keep your certificate alive while you use this app.")];
@@ -628,7 +688,7 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
     [body addArrangedSubview:moreCol];
 
     [NSLayoutConstraint activateConstraints:@[
-        [head.topAnchor constraintEqualToAnchor:_card.topAnchor constant:18],
+        [head.topAnchor constraintEqualToAnchor:_card.topAnchor constant:24],
         [head.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:18],
         [head.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-18],
 

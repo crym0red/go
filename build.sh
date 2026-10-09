@@ -10,6 +10,12 @@ if [ -f AirShareLogo.png ]; then
   xxd -i AirShareLogo.png > AirShareLogo.h
 fi
 
+rm -f DelvekLogo.h
+[ -f DelvekLogo.png ] || curl -fsSL -m 30 -o DelvekLogo.png https://delvek.net/img/delvek4.png || rm -f DelvekLogo.png
+if [ -f DelvekLogo.png ]; then
+  xxd -i DelvekLogo.png > DelvekLogo.h
+fi
+
 clang -arch arm64 \
   -isysroot "$SDK" \
   -miphoneos-version-min=14.0 \
