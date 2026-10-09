@@ -3,7 +3,7 @@
 //    Instant Certificates / More Apps / CLOSING IN x.xs") the moment it tries
 //    to show. Everything else keeps running.
 // 2) Replaces it with the DELvEK onboarding: bottom card (~1/4 screen) with the
-//    host app's icon / name / bundle id, TrustCore info, 5s countdown + haptics.
+//    host app's icon / name / bundle id, AirCore info, 5s countdown + haptics.
 //
 // Detection (UIKit AND SwiftUI splashes):
 //   - WHO drew it: any window / presented VC / full-screen subview created from
@@ -357,23 +357,6 @@ static NSString *AHPPQTimer(void) {
     return [NSString stringWithFormat:@"%ldd %ldh %ldm", (long)(s / 86400), (long)((s % 86400) / 3600), (long)((s % 3600) / 60)];
 }
 
-#pragma mark - Onboarding: haptics
-
-// 0 = appear, 1 = countdown tick, 2 = done
-static void AHHaptic(int kind) {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (kind == 1) {
-            UIImpactFeedbackGenerator *g = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
-            [g prepare];
-            [g impactOccurred];
-        } else {
-            UINotificationFeedbackGenerator *g = [UINotificationFeedbackGenerator new];
-            [g prepare];
-            [g notificationOccurred:UINotificationFeedbackTypeSuccess];
-        }
-    });
-}
-
 #pragma mark - Onboarding: UI
 
 static UILabel *AHLabel(NSString *t, UIFont *f, UIColor *c, NSInteger lines) {
@@ -396,31 +379,38 @@ static void AHPin(UIView *v, UIView *to) {
     ]];
 }
 
-static NSAttributedString *AHChip(NSString *sym, NSString *txt, UIFont *f, UIColor *c) {
-    NSMutableAttributedString *s = [NSMutableAttributedString new];
-    UIImage *img = [UIImage systemImageNamed:sym
-                           withConfiguration:[UIImageSymbolConfiguration configurationWithFont:f]];
-    if (img) {
-        NSTextAttachment *a = [NSTextAttachment new];
-        a.image = [img imageWithTintColor:c renderingMode:UIImageRenderingModeAlwaysOriginal];
-        [s appendAttributedString:[NSAttributedString attributedStringWithAttachment:a]];
+static UIImage *AHSig(void) {
+    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:24 weight:UIImageSymbolWeightRegular];
+    for (NSString *n in @[ @"signature.zh", @"signature", @"pencil.and.scribble" ]) {
+        UIImage *i = [UIImage systemImageNamed:n withConfiguration:cfg];
+        if (i) return i;
     }
-    [s appendAttributedString:[[NSAttributedString alloc]
-        initWithString:[@" " stringByAppendingString:txt]
-            attributes:@{ NSFontAttributeName: f, NSForegroundColorAttributeName: c }]];
-    return s;
+    return nil;
+}
+
+static UIView *AHBadgeRow(NSString *sym, NSString *txt) {
+    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:13 weight:UIImageSymbolWeightRegular];
+    UIImageView *iv = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:sym withConfiguration:cfg]];
+    iv.tintColor = [UIColor colorWithRed:232/255.0 green:154/255.0 blue:74/255.0 alpha:1];
+    iv.contentMode = UIViewContentModeScaleAspectFit;
+    UILabel *l = AHLabel(txt, [UIFont systemFontOfSize:11 weight:UIFontWeightMedium], UIColor.whiteColor, 1);
+    UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[iv, l]];
+    row.axis = UILayoutConstraintAxisHorizontal;
+    row.alignment = UIStackViewAlignmentCenter;
+    row.spacing = 5;
+    return row;
 }
 
 static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NSString *sub) {
-    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:22 weight:UIImageSymbolWeightRegular];
+    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:28 weight:UIImageSymbolWeightRegular];
     UIImageView *iv = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:sym withConfiguration:cfg]];
-    iv.tintColor = AHOrange();
+    iv.tintColor = [UIColor colorWithRed:232/255.0 green:154/255.0 blue:74/255.0 alpha:1];
     iv.contentMode = UIViewContentModeTop;
     iv.translatesAutoresizingMaskIntoConstraints = NO;
-    [iv.widthAnchor constraintEqualToConstant:28].active = YES;
+    [iv.widthAnchor constraintEqualToConstant:34].active = YES;
 
-    UILabel *t = AHLabel(title, [UIFont systemFontOfSize:14 weight:UIFontWeightBold], titleColor, 0);
-    UILabel *s = AHLabel(sub, [UIFont systemFontOfSize:12.5], AHGray(), 0);
+    UILabel *t = AHLabel(title, [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold], titleColor, 0);
+    UILabel *s = AHLabel(sub, [UIFont systemFontOfSize:13], [UIColor colorWithWhite:1 alpha:0.6], 0);
     UIStackView *col = [[UIStackView alloc] initWithArrangedSubviews:@[t, s]];
     col.axis = UILayoutConstraintAxisVertical;
     col.spacing = 2;
@@ -428,7 +418,7 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
     UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[iv, col]];
     row.axis = UILayoutConstraintAxisHorizontal;
     row.alignment = UIStackViewAlignmentTop;
-    row.spacing = 10;
+    row.spacing = 12;
     return row;
 }
 
@@ -456,7 +446,7 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
 
     _card = [UIView new];
     _card.translatesAutoresizingMaskIntoConstraints = NO;
-    _card.layer.cornerRadius = 28;
+    _card.layer.cornerRadius = 30;
     _card.layer.cornerCurve = kCACornerCurveContinuous;
     _card.layer.masksToBounds = YES;
     _card.layer.borderWidth = 0.5;
@@ -474,47 +464,77 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
     AHPin(tint, _card);
 
     UILayoutGuide *sg = self.view.safeAreaLayoutGuide;
-    NSLayoutConstraint *h = [_card.heightAnchor constraintEqualToAnchor:self.view.heightAnchor multiplier:0.25];
-    h.priority = 999;
     [NSLayoutConstraint activateConstraints:@[
         [_card.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:8],
         [_card.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-8],
         [_card.bottomAnchor constraintEqualToAnchor:sg.bottomAnchor constant:-6],
-        h,
-        [_card.heightAnchor constraintGreaterThanOrEqualToConstant:210],
+        [_card.topAnchor constraintGreaterThanOrEqualToAnchor:sg.topAnchor constant:12],
     ]];
 
-    // ---- header: app icon / name / bundle id ----
+    // ---- header: icon | name + bundle + tagline | signature + badges ----
     UIImageView *icon = [[UIImageView alloc] initWithImage:AHAppIcon()];
     icon.contentMode = UIViewContentModeScaleAspectFill;
-    icon.layer.cornerRadius = 10;
+    icon.layer.cornerRadius = 14;
     icon.layer.cornerCurve = kCACornerCurveContinuous;
     icon.layer.masksToBounds = YES;
     icon.translatesAutoresizingMaskIntoConstraints = NO;
-    [icon.widthAnchor constraintEqualToConstant:44].active = YES;
-    [icon.heightAnchor constraintEqualToConstant:44].active = YES;
+    [icon.widthAnchor constraintEqualToConstant:60].active = YES;
+    [icon.heightAnchor constraintEqualToConstant:60].active = YES;
 
-    UILabel *name = AHLabel(AHAppName(), [UIFont systemFontOfSize:17 weight:UIFontWeightBold], UIColor.whiteColor, 1);
+    UILabel *name = AHLabel([NSString stringWithFormat:@"[ %@ ]", AHAppName()],
+                            [UIFont systemFontOfSize:21 weight:UIFontWeightSemibold], UIColor.whiteColor, 1);
     name.adjustsFontSizeToFitWidth = YES;
-    name.minimumScaleFactor = 0.7;
+    name.minimumScaleFactor = 0.6;
     UILabel *bid = AHLabel(NSBundle.mainBundle.bundleIdentifier ?: @"--",
-                           [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular], AHGray(), 1);
+                           [UIFont systemFontOfSize:13], [UIColor colorWithWhite:1 alpha:0.55], 1);
     bid.adjustsFontSizeToFitWidth = YES;
-    bid.minimumScaleFactor = 0.7;
-    UIStackView *txt = [[UIStackView alloc] initWithArrangedSubviews:@[name, bid]];
+    bid.minimumScaleFactor = 0.6;
+    UILabel *tag = AHLabel(@"AirCore is now active, helping you keep your certificate safer.",
+                           [UIFont systemFontOfSize:12.5], [UIColor colorWithWhite:1 alpha:0.55], 0);
+    UIStackView *txt = [[UIStackView alloc] initWithArrangedSubviews:@[name, bid, tag]];
     txt.axis = UILayoutConstraintAxisVertical;
-    txt.spacing = 2;
+    txt.spacing = 3;
+    [txt setCustomSpacing:6 afterView:bid];
+    txt.layoutMarginsRelativeArrangement = YES;
+    txt.layoutMargins = UIEdgeInsetsMake(8, 0, 0, 0);
 
-    UIFont *sigFont = [UIFont fontWithName:@"SnellRoundhand-Bold" size:17]
-                   ?: [UIFont italicSystemFontOfSize:15];
-    UILabel *sig = AHLabel(@"MRZefv™", sigFont, AHOrange(), 1);
-    [sig setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-    [sig setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    UIImageView *sigIv = [[UIImageView alloc] initWithImage:AHSig()];
+    sigIv.tintColor = AHOrange();
+    sigIv.contentMode = UIViewContentModeScaleAspectFit;
+    NSMutableAttributedString *mk = [[NSMutableAttributedString alloc] initWithString:@"MrZEFv" attributes:@{
+        NSFontAttributeName: [UIFont systemFontOfSize:13 weight:UIFontWeightMedium],
+        NSForegroundColorAttributeName: AHOrange() }];
+    [mk appendAttributedString:[[NSAttributedString alloc] initWithString:@"™" attributes:@{
+        NSFontAttributeName: [UIFont systemFontOfSize:8],
+        NSForegroundColorAttributeName: AHOrange(),
+        NSBaselineOffsetAttributeName: @5 }]];
+    UILabel *mkl = AHLabel(nil, [UIFont systemFontOfSize:13], AHOrange(), 1);
+    mkl.attributedText = mk;
+    UIStackView *sigRow = [[UIStackView alloc] initWithArrangedSubviews:@[sigIv, mkl]];
+    sigRow.axis = UILayoutConstraintAxisHorizontal;
+    sigRow.alignment = UIStackViewAlignmentCenter;
+    sigRow.spacing = 6;
 
-    UIStackView *head = [[UIStackView alloc] initWithArrangedSubviews:@[icon, txt, sig]];
+    UIStackView *rt = [[UIStackView alloc] initWithArrangedSubviews:@[sigRow]];
+    rt.axis = UILayoutConstraintAxisVertical;
+    rt.alignment = UIStackViewAlignmentTrailing;
+    rt.spacing = 4;
+    [rt setCustomSpacing:6 afterView:sigRow];
+    NSArray *badges = @[
+        @[@"dollarsign.circle", @"✓ FREE"],
+        @[@"arrow.down.to.line", @"Download(s)"],
+        @[@"icloud.slash", @"Watch Offline"],
+        @[@"nosign", @"No Ads/Account"],
+        @[@"arrow.triangle.2.circlepath", @"Anti-Update(s)"],
+    ];
+    for (NSArray *b in badges) [rt addArrangedSubview:AHBadgeRow(b[0], b[1])];
+    [rt setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [rt setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+
+    UIStackView *head = [[UIStackView alloc] initWithArrangedSubviews:@[icon, txt, rt]];
     head.axis = UILayoutConstraintAxisHorizontal;
-    head.alignment = UIStackViewAlignmentCenter;
-    head.spacing = 12;
+    head.alignment = UIStackViewAlignmentTop;
+    head.spacing = 10;
     head.translatesAutoresizingMaskIntoConstraints = NO;
     [_card addSubview:head];
 
@@ -522,9 +542,9 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
     _btn = [UIButton buttonWithType:UIButtonTypeCustom];
     _btn.translatesAutoresizingMaskIntoConstraints = NO;
     _btn.backgroundColor = AHOrange();
-    _btn.layer.cornerRadius = 22;
+    _btn.layer.cornerRadius = 23;
     _btn.layer.cornerCurve = kCACornerCurveContinuous;
-    _btn.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightBold];
+    _btn.titleLabel.font = [UIFont systemFontOfSize:19 weight:UIFontWeightSemibold];
     UIColor *dark = [UIColor colorWithWhite:0.1 alpha:1];
     [_btn setTitleColor:dark forState:UIControlStateNormal];
     [_btn setTitleColor:dark forState:UIControlStateDisabled];
@@ -534,85 +554,76 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
     _btn.enabled = NO;
     [_card addSubview:_btn];
 
-    // ---- scrolling body ----
+    // ---- body: links row, info rows, even more ----
     _scroll = [UIScrollView new];
     _scroll.translatesAutoresizingMaskIntoConstraints = NO;
     _scroll.showsVerticalScrollIndicator = YES;
-    _scroll.alwaysBounceVertical = YES;
+    _scroll.alwaysBounceVertical = NO;
     [_card addSubview:_scroll];
 
     UIStackView *body = [UIStackView new];
     body.axis = UILayoutConstraintAxisVertical;
-    body.spacing = 10;
+    body.spacing = 12;
     body.translatesAutoresizingMaskIntoConstraints = NO;
     [_scroll addSubview:body];
 
-    UILabel *tag = AHLabel(@"TrustCore is now active, helping you keep your certificate safer.",
-                           [UIFont systemFontOfSize:13], AHGray(), 0);
-    [body addArrangedSubview:tag];
-
-    UIFont *cf = [UIFont systemFontOfSize:11 weight:UIFontWeightSemibold];
-    UIColor *oc = AHOrange();
-    NSMutableAttributedString *chips = [NSMutableAttributedString new];
-    NSArray *items = @[
-        @[@"dollarsign.circle", @"FREE"],
-        @[@"arrow.down.to.line", @"Download(s)"],
-        @[@"icloud.slash", @"Watch Offline"],
-        @[@"nosign", @"No Ads/Account"],
-        @[@"arrow.triangle.2.circlepath", @"Anti-Update(s)"],
-    ];
-    for (NSUInteger i = 0; i < items.count; i++) {
-        if (i) [chips appendAttributedString:[[NSAttributedString alloc] initWithString:@"    "]];
-        [chips appendAttributedString:AHChip(items[i][0], items[i][1], cf, oc)];
-    }
-    UILabel *chipLabel = AHLabel(nil, cf, oc, 0);
-    chipLabel.attributedText = chips;
-    [body addArrangedSubview:chipLabel];
-
-    UIFont *lf = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
-    UILabel *l1 = AHLabel(@"DELvEK.NET", lf, AHGreen(), 1);
+    UIFont *lf = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    UIImageView *sic = [[UIImageView alloc] initWithImage:AHAppIcon()];
+    sic.contentMode = UIViewContentModeScaleAspectFill;
+    sic.layer.cornerRadius = 5;
+    sic.layer.masksToBounds = YES;
+    sic.translatesAutoresizingMaskIntoConstraints = NO;
+    [sic.widthAnchor constraintEqualToConstant:20].active = YES;
+    [sic.heightAnchor constraintEqualToConstant:20].active = YES;
+    UILabel *l1 = AHLabel(@"AirShare.lol", lf, AHGreen(), 1);
+    UIStackView *l1s = [[UIStackView alloc] initWithArrangedSubviews:@[sic, l1]];
+    l1s.axis = UILayoutConstraintAxisHorizontal;
+    l1s.alignment = UIStackViewAlignmentCenter;
+    l1s.spacing = 7;
     UILabel *l2 = AHLabel(@"Ł  DONATE LTC", lf, [UIColor colorWithWhite:1 alpha:0.9], 1);
     UILabel *l3 = AHLabel(nil, lf, AHGreen(), 1);
     NSMutableAttributedString *ppq = [[NSMutableAttributedString alloc] initWithString:@"PPQ TiMER" attributes:@{
         NSFontAttributeName: lf, NSForegroundColorAttributeName: AHGreen() }];
     [ppq appendAttributedString:[[NSAttributedString alloc] initWithString:[@" : " stringByAppendingString:AHPPQTimer()] attributes:@{
-        NSFontAttributeName: [UIFont systemFontOfSize:12], NSForegroundColorAttributeName: AHGray() }]];
+        NSFontAttributeName: [UIFont systemFontOfSize:13], NSForegroundColorAttributeName: AHGray() }]];
     l3.attributedText = ppq;
     for (UILabel *l in @[l1, l2, l3]) { l.adjustsFontSizeToFitWidth = YES; l.minimumScaleFactor = 0.7; }
-    UIStackView *links = [[UIStackView alloc] initWithArrangedSubviews:@[l1, l2, l3]];
+    UIStackView *links = [[UIStackView alloc] initWithArrangedSubviews:@[l1s, l2, l3]];
     links.axis = UILayoutConstraintAxisHorizontal;
+    links.alignment = UIStackViewAlignmentCenter;
     links.distribution = UIStackViewDistributionEqualSpacing;
     [body addArrangedSubview:links];
+    [body setCustomSpacing:14 afterView:links];
 
-    [body addArrangedSubview:AHFeature(@"checkmark.shield", @"TRUSTCORE PROTECTiON", UIColor.whiteColor,
+    [body addArrangedSubview:AHFeature(@"checkmark.shield", @"AIRCORE PROTECTiON", UIColor.whiteColor,
         @"Blocks risky Apple endpoints to help you keep your certificate alive while you use this app.")];
     [body addArrangedSubview:AHFeature(@"hand.tap", @"ANTiPiRACY SiGNATURE", UIColor.whiteColor,
-        @"App was Downloaded from DELvEK.NET")];
-    [body addArrangedSubview:AHFeature(@"info.circle", @"DELvEK's REPOSiTORY", AHGreen(),
+        @"App was Downloaded from AirShare.lol")];
+    [body addArrangedSubview:AHFeature(@"info.circle", @"AirShare REPOSiTORY", AHGreen(),
         @"Trusted status. This app was scanned & verified!")];
 
-    UILabel *more = AHLabel(@"& even more…", [UIFont systemFontOfSize:16 weight:UIFontWeightBold], UIColor.whiteColor, 1);
+    UILabel *more = AHLabel(@"& even more…", [UIFont systemFontOfSize:17 weight:UIFontWeightSemibold], UIColor.whiteColor, 1);
     UILabel *revoke = AHLabel(@"App can only be revoked if apple invalidates AppiD.",
-                              [UIFont systemFontOfSize:12.5], AHGray(), 0);
+                              [UIFont systemFontOfSize:13], [UIColor colorWithWhite:1 alpha:0.55], 0);
     UIStackView *moreCol = [[UIStackView alloc] initWithArrangedSubviews:@[more, revoke]];
     moreCol.axis = UILayoutConstraintAxisVertical;
     moreCol.spacing = 3;
     [body addArrangedSubview:moreCol];
 
     [NSLayoutConstraint activateConstraints:@[
-        [head.topAnchor constraintEqualToAnchor:_card.topAnchor constant:16],
-        [head.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:16],
-        [head.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-16],
+        [head.topAnchor constraintEqualToAnchor:_card.topAnchor constant:18],
+        [head.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:18],
+        [head.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-18],
 
-        [_btn.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:16],
-        [_btn.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-16],
+        [_btn.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:18],
+        [_btn.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-18],
         [_btn.bottomAnchor constraintEqualToAnchor:_card.bottomAnchor constant:-14],
-        [_btn.heightAnchor constraintEqualToConstant:44],
+        [_btn.heightAnchor constraintEqualToConstant:46],
 
-        [_scroll.topAnchor constraintEqualToAnchor:head.bottomAnchor constant:10],
-        [_scroll.bottomAnchor constraintEqualToAnchor:_btn.topAnchor constant:-10],
-        [_scroll.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:16],
-        [_scroll.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-16],
+        [_scroll.topAnchor constraintEqualToAnchor:head.bottomAnchor constant:16],
+        [_scroll.bottomAnchor constraintEqualToAnchor:_btn.topAnchor constant:-16],
+        [_scroll.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:18],
+        [_scroll.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-18],
 
         [body.topAnchor constraintEqualToAnchor:_scroll.contentLayoutGuide.topAnchor],
         [body.bottomAnchor constraintEqualToAnchor:_scroll.contentLayoutGuide.bottomAnchor],
@@ -620,6 +631,10 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
         [body.trailingAnchor constraintEqualToAnchor:_scroll.contentLayoutGuide.trailingAnchor],
         [body.widthAnchor constraintEqualToAnchor:_scroll.frameLayoutGuide.widthAnchor],
     ]];
+    // card grows to fit every row; only scrolls if the screen is too short
+    NSLayoutConstraint *fit = [_scroll.heightAnchor constraintEqualToAnchor:body.heightAnchor];
+    fit.priority = 999;
+    fit.active = YES;
 
     _card.transform = CGAffineTransformMakeTranslation(0, 500);
 }
@@ -631,7 +646,6 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
         self.card.transform = CGAffineTransformIdentity;
         self.dim.alpha = 1;
     } completion:^(BOOL f) { [self.scroll flashScrollIndicators]; }];
-    AHHaptic(0);
 
     __weak typeof(self) ws = self;
     _timer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) {
@@ -640,13 +654,11 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
         s.left--;
         if (s.left > 0) {
             [s.btn setTitle:[NSString stringWithFormat:@"Continue (%ld)", (long)s.left] forState:UIControlStateNormal];
-            AHHaptic(1);
         } else {
             [t invalidate];
             s.timer = nil;
             [s.btn setTitle:@"Continue" forState:UIControlStateNormal];
             s.btn.enabled = YES;
-            AHHaptic(2);
         }
     }];
     [NSRunLoop.mainRunLoop addTimer:_timer forMode:NSRunLoopCommonModes];
