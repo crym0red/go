@@ -1,20 +1,21 @@
 // AirHide.dylib
-// Kills the full-screen onboarding splash ("Welcome / Cracked by Blatant /
-// Instant Certificates / More Apps / CLOSING IN x.xs") the moment it tries to
-// show. Everything else keeps running.
+// 1) Kills the full-screen onboarding splash ("Welcome / Cracked by Blatant /
+//    Instant Certificates / More Apps / CLOSING IN x.xs") the moment it tries
+//    to show. Everything else keeps running.
+// 2) Replaces it with the DELvEK onboarding: bottom card (~1/4 screen) with the
+//    host app's icon / name / bundle id, TrustCore info, 5s countdown + haptics.
 //
-// Detection (works for UIKit AND SwiftUI splashes):
-//   1. WHO drew it: any window / presented VC / full-screen subview created
-//      from code living in an injected image (a bare .dylib inside the .app,
-//      or any image whose path matches AHBlockNames) is blocked.
-//   2. WHAT it is: class / module names matching AHBlockNames.
-//   3. TEXT: UILabel text markers (UIKit splashes).
-//   4. A 0.1s sweep for 25s after launch / foreground as a safety net.
+// Detection (UIKit AND SwiftUI splashes):
+//   - WHO drew it: any window / presented VC / full-screen subview created from
+//     code in an injected image (bare .dylib inside the .app, or any image path
+//     matching AHBlockNames) is blocked.
+//   - WHAT it is: class / module names matching AHBlockNames.
+//   - TEXT: UILabel markers (UIKit splashes).
+//   - 0.1s sweep for 25s after launch / foreground as a safety net.
 //
-// Config: edit AHBlockNames / AHKeepNames below.
-//   AHKeepNames  = image names of YOUR other dylibs that must be allowed to
-//                  show full-screen UI (e.g. @"mrzefvam", lowercase).
-// Kill switch: NSUserDefaults bool "AirHideOff" = YES disables everything.
+// Config below. Kill switch: NSUserDefaults bool "AirHideOff" = YES.
+// Onboarding: shown once per install. Set AH_ONBOARD_EVERY_LAUNCH to 1 to show
+// it on every launch. NSUserDefaults bool "AirHideOnboardOff" = YES hides it.
 
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
@@ -24,11 +25,14 @@
 
 #pragma mark - Config
 
+#define AH_ONBOARD_EVERY_LAUNCH 0
+#define AH_COUNTDOWN_SECONDS 5
+
 static NSArray<NSString *> *AHBlockNames(void) {
     return @[ @"blatant" ];
 }
 static NSArray<NSString *> *AHKeepNames(void) {
-    return @[ ];
+    return @[ ]; // lowercase image names of YOUR dylibs allowed to show full-screen UI
 }
 static NSArray<NSString *> *AHIgnoreNames(void) {
     static NSArray *a;
@@ -41,6 +45,8 @@ static NSArray<NSString *> *AHIgnoreNames(void) {
 }
 
 static NSString *const kAirHideOff = @"AirHideOff";
+static NSString *const kOnbOff = @"AirHideOnboardOff";
+static NSString *const kOnbSeen = @"AirHideOnboardSeen";
 static __weak UIWindow *gMain;
 static NSInteger gBudget = 0;
 static NSTimer *gTimer;
@@ -88,8 +94,17 @@ static BOOL AHPathBlocked(const char *p) {
 
 static BOOL AHClassBlocked(Class c) {
     if (!c) return NO;
-    if (AHPathBlocked(class_getImageName(c))) return YES;
-    return AHNameBlocked(NSStringFromClass(c));
+    static NSMutableDictionary<NSValue *, NSNumber *> *ccache;
+    static dispatch_once_t t;
+    dispatch_once(&t, ^{ ccache = [NSMutableDictionary dictionary]; });
+    NSValue *k = [NSValue valueWithNonretainedObject:c];
+    @synchronized (ccache) {
+        NSNumber *n = ccache[k];
+        if (n) return n.boolValue;
+        BOOL r = AHPathBlocked(class_getImageName(c)) || AHNameBlocked(NSStringFromClass(c));
+        ccache[k] = @(r);
+        return r;
+    }
 }
 
 static BOOL AHStackFromBlocked(void) {
@@ -294,6 +309,401 @@ static void AHStartTimer(void) {
     [NSRunLoop.mainRunLoop addTimer:gTimer forMode:NSRunLoopCommonModes];
 }
 
+#pragma mark - Onboarding: data
+
+static UIColor *AHOrange(void) { return [UIColor colorWithRed:196/255.0 green:138/255.0 blue:75/255.0 alpha:1]; }
+static UIColor *AHGreen(void)  { return [UIColor colorWithRed:92/255.0 green:200/255.0 blue:122/255.0 alpha:1]; }
+static UIColor *AHGray(void)   { return [UIColor colorWithWhite:1 alpha:0.62]; }
+
+static NSString *AHAppName(void) {
+    NSDictionary *i = NSBundle.mainBundle.infoDictionary;
+    return i[@"CFBundleDisplayName"] ?: i[@"CFBundleName"] ?: @"App";
+}
+
+static UIImage *AHAppIcon(void) {
+    NSDictionary *icons = NSBundle.mainBundle.infoDictionary[@"CFBundleIcons"];
+    NSDictionary *primary = [icons isKindOfClass:NSDictionary.class] ? icons[@"CFBundlePrimaryIcon"] : nil;
+    NSArray *files = [primary isKindOfClass:NSDictionary.class] ? primary[@"CFBundleIconFiles"] : nil;
+    if ([files isKindOfClass:NSArray.class]) {
+        for (NSString *n in files.reverseObjectEnumerator) {
+            UIImage *im = [UIImage imageNamed:n];
+            if (im) return im;
+        }
+    }
+    NSString *name = [primary isKindOfClass:NSDictionary.class] ? primary[@"CFBundleIconName"] : nil;
+    if (name) {
+        UIImage *im = [UIImage imageNamed:name];
+        if (im) return im;
+    }
+    return [UIImage systemImageNamed:@"app.fill"];
+}
+
+// Time left on the signing certificate / provisioning profile ("35d 20h 3m").
+static NSString *AHPPQTimer(void) {
+    NSString *p = [NSBundle.mainBundle pathForResource:@"embedded" ofType:@"mobileprovision"];
+    NSData *d = p ? [NSData dataWithContentsOfFile:p] : nil;
+    if (!d) return @"--";
+    NSData *a = [@"<?xml" dataUsingEncoding:NSASCIIStringEncoding];
+    NSData *b = [@"</plist>" dataUsingEncoding:NSASCIIStringEncoding];
+    NSRange r1 = [d rangeOfData:a options:0 range:NSMakeRange(0, d.length)];
+    NSRange r2 = [d rangeOfData:b options:0 range:NSMakeRange(0, d.length)];
+    if (r1.location == NSNotFound || r2.location == NSNotFound || r2.location < r1.location) return @"--";
+    NSData *pl = [d subdataWithRange:NSMakeRange(r1.location, r2.location + r2.length - r1.location)];
+    NSDictionary *pd = [NSPropertyListSerialization propertyListWithData:pl options:0 format:NULL error:NULL];
+    NSDate *exp = [pd isKindOfClass:NSDictionary.class] ? pd[@"ExpirationDate"] : nil;
+    if (![exp isKindOfClass:NSDate.class]) return @"--";
+    NSInteger s = (NSInteger)[exp timeIntervalSinceNow];
+    if (s <= 0) return @"expired";
+    return [NSString stringWithFormat:@"%ldd %ldh %ldm", (long)(s / 86400), (long)((s % 86400) / 3600), (long)((s % 3600) / 60)];
+}
+
+#pragma mark - Onboarding: haptics
+
+// 0 = appear, 1 = countdown tick, 2 = done
+static void AHHaptic(int kind) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (kind == 1) {
+            UIImpactFeedbackGenerator *g = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+            [g prepare];
+            [g impactOccurred];
+        } else {
+            UINotificationFeedbackGenerator *g = [UINotificationFeedbackGenerator new];
+            [g prepare];
+            [g notificationOccurred:UINotificationFeedbackTypeSuccess];
+        }
+    });
+}
+
+#pragma mark - Onboarding: UI
+
+static UILabel *AHLabel(NSString *t, UIFont *f, UIColor *c, NSInteger lines) {
+    UILabel *l = [UILabel new];
+    l.translatesAutoresizingMaskIntoConstraints = NO;
+    l.text = t;
+    l.font = f;
+    l.textColor = c;
+    l.numberOfLines = lines;
+    return l;
+}
+
+static void AHPin(UIView *v, UIView *to) {
+    v.translatesAutoresizingMaskIntoConstraints = NO;
+    [NSLayoutConstraint activateConstraints:@[
+        [v.topAnchor constraintEqualToAnchor:to.topAnchor],
+        [v.bottomAnchor constraintEqualToAnchor:to.bottomAnchor],
+        [v.leadingAnchor constraintEqualToAnchor:to.leadingAnchor],
+        [v.trailingAnchor constraintEqualToAnchor:to.trailingAnchor],
+    ]];
+}
+
+static NSAttributedString *AHChip(NSString *sym, NSString *txt, UIFont *f, UIColor *c) {
+    NSMutableAttributedString *s = [NSMutableAttributedString new];
+    UIImage *img = [UIImage systemImageNamed:sym
+                           withConfiguration:[UIImageSymbolConfiguration configurationWithFont:f]];
+    if (img) {
+        NSTextAttachment *a = [NSTextAttachment new];
+        a.image = [img imageWithTintColor:c renderingMode:UIImageRenderingModeAlwaysOriginal];
+        [s appendAttributedString:[NSAttributedString attributedStringWithAttachment:a]];
+    }
+    [s appendAttributedString:[[NSAttributedString alloc]
+        initWithString:[@" " stringByAppendingString:txt]
+            attributes:@{ NSFontAttributeName: f, NSForegroundColorAttributeName: c }]];
+    return s;
+}
+
+static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NSString *sub) {
+    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:22 weight:UIImageSymbolWeightRegular];
+    UIImageView *iv = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:sym withConfiguration:cfg]];
+    iv.tintColor = AHOrange();
+    iv.contentMode = UIViewContentModeTop;
+    iv.translatesAutoresizingMaskIntoConstraints = NO;
+    [iv.widthAnchor constraintEqualToConstant:28].active = YES;
+
+    UILabel *t = AHLabel(title, [UIFont systemFontOfSize:14 weight:UIFontWeightBold], titleColor, 0);
+    UILabel *s = AHLabel(sub, [UIFont systemFontOfSize:12.5], AHGray(), 0);
+    UIStackView *col = [[UIStackView alloc] initWithArrangedSubviews:@[t, s]];
+    col.axis = UILayoutConstraintAxisVertical;
+    col.spacing = 2;
+
+    UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[iv, col]];
+    row.axis = UILayoutConstraintAxisHorizontal;
+    row.alignment = UIStackViewAlignmentTop;
+    row.spacing = 10;
+    return row;
+}
+
+@interface AHOnbVC : UIViewController
+@property (nonatomic, strong) UIView *dim;
+@property (nonatomic, strong) UIView *card;
+@property (nonatomic, strong) UIButton *btn;
+@property (nonatomic, strong) UIScrollView *scroll;
+@property (nonatomic, strong) NSTimer *timer;
+@property (nonatomic) NSInteger left;
+@property (nonatomic, copy) void (^onDone)(void);
+@end
+
+@implementation AHOnbVC
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.view.backgroundColor = UIColor.clearColor;
+
+    _dim = [[UIView alloc] initWithFrame:self.view.bounds];
+    _dim.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    _dim.backgroundColor = [UIColor colorWithWhite:0 alpha:0.5];
+    _dim.alpha = 0;
+    [self.view addSubview:_dim];
+
+    _card = [UIView new];
+    _card.translatesAutoresizingMaskIntoConstraints = NO;
+    _card.layer.cornerRadius = 28;
+    _card.layer.cornerCurve = kCACornerCurveContinuous;
+    _card.layer.masksToBounds = YES;
+    _card.layer.borderWidth = 0.5;
+    _card.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.16].CGColor;
+    [self.view addSubview:_card];
+
+    UIVisualEffectView *blur = [[UIVisualEffectView alloc]
+        initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterialDark]];
+    [_card addSubview:blur];
+    AHPin(blur, _card);
+    UIView *tint = [UIView new];
+    tint.backgroundColor = [UIColor colorWithRed:22/255.0 green:22/255.0 blue:25/255.0 alpha:0.82];
+    tint.userInteractionEnabled = NO;
+    [_card addSubview:tint];
+    AHPin(tint, _card);
+
+    UILayoutGuide *sg = self.view.safeAreaLayoutGuide;
+    NSLayoutConstraint *h = [_card.heightAnchor constraintEqualToAnchor:self.view.heightAnchor multiplier:0.25];
+    h.priority = 999;
+    [NSLayoutConstraint activateConstraints:@[
+        [_card.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:8],
+        [_card.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-8],
+        [_card.bottomAnchor constraintEqualToAnchor:sg.bottomAnchor constant:-6],
+        h,
+        [_card.heightAnchor constraintGreaterThanOrEqualToConstant:210],
+    ]];
+
+    // ---- header: app icon / name / bundle id ----
+    UIImageView *icon = [[UIImageView alloc] initWithImage:AHAppIcon()];
+    icon.contentMode = UIViewContentModeScaleAspectFill;
+    icon.layer.cornerRadius = 10;
+    icon.layer.cornerCurve = kCACornerCurveContinuous;
+    icon.layer.masksToBounds = YES;
+    icon.translatesAutoresizingMaskIntoConstraints = NO;
+    [icon.widthAnchor constraintEqualToConstant:44].active = YES;
+    [icon.heightAnchor constraintEqualToConstant:44].active = YES;
+
+    UILabel *name = AHLabel(AHAppName(), [UIFont systemFontOfSize:17 weight:UIFontWeightBold], UIColor.whiteColor, 1);
+    name.adjustsFontSizeToFitWidth = YES;
+    name.minimumScaleFactor = 0.7;
+    UILabel *bid = AHLabel(NSBundle.mainBundle.bundleIdentifier ?: @"--",
+                           [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular], AHGray(), 1);
+    bid.adjustsFontSizeToFitWidth = YES;
+    bid.minimumScaleFactor = 0.7;
+    UIStackView *txt = [[UIStackView alloc] initWithArrangedSubviews:@[name, bid]];
+    txt.axis = UILayoutConstraintAxisVertical;
+    txt.spacing = 2;
+
+    UIFont *sigFont = [UIFont fontWithName:@"SnellRoundhand-Bold" size:17]
+                   ?: [UIFont italicSystemFontOfSize:15];
+    UILabel *sig = AHLabel(@"MRZefv™", sigFont, AHOrange(), 1);
+    [sig setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [sig setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+
+    UIStackView *head = [[UIStackView alloc] initWithArrangedSubviews:@[icon, txt, sig]];
+    head.axis = UILayoutConstraintAxisHorizontal;
+    head.alignment = UIStackViewAlignmentCenter;
+    head.spacing = 12;
+    head.translatesAutoresizingMaskIntoConstraints = NO;
+    [_card addSubview:head];
+
+    // ---- footer: Continue (N) ----
+    _btn = [UIButton buttonWithType:UIButtonTypeCustom];
+    _btn.translatesAutoresizingMaskIntoConstraints = NO;
+    _btn.backgroundColor = AHOrange();
+    _btn.layer.cornerRadius = 22;
+    _btn.layer.cornerCurve = kCACornerCurveContinuous;
+    _btn.titleLabel.font = [UIFont systemFontOfSize:17 weight:UIFontWeightBold];
+    UIColor *dark = [UIColor colorWithWhite:0.1 alpha:1];
+    [_btn setTitleColor:dark forState:UIControlStateNormal];
+    [_btn setTitleColor:dark forState:UIControlStateDisabled];
+    [_btn addTarget:self action:@selector(finish) forControlEvents:UIControlEventTouchUpInside];
+    _left = AH_COUNTDOWN_SECONDS;
+    [_btn setTitle:[NSString stringWithFormat:@"Continue (%ld)", (long)_left] forState:UIControlStateNormal];
+    _btn.enabled = NO;
+    [_card addSubview:_btn];
+
+    // ---- scrolling body ----
+    _scroll = [UIScrollView new];
+    _scroll.translatesAutoresizingMaskIntoConstraints = NO;
+    _scroll.showsVerticalScrollIndicator = YES;
+    _scroll.alwaysBounceVertical = YES;
+    [_card addSubview:_scroll];
+
+    UIStackView *body = [UIStackView new];
+    body.axis = UILayoutConstraintAxisVertical;
+    body.spacing = 10;
+    body.translatesAutoresizingMaskIntoConstraints = NO;
+    [_scroll addSubview:body];
+
+    UILabel *tag = AHLabel(@"TrustCore is now active, helping you keep your certificate safer.",
+                           [UIFont systemFontOfSize:13], AHGray(), 0);
+    [body addArrangedSubview:tag];
+
+    UIFont *cf = [UIFont systemFontOfSize:11 weight:UIFontWeightSemibold];
+    UIColor *oc = AHOrange();
+    NSMutableAttributedString *chips = [NSMutableAttributedString new];
+    NSArray *items = @[
+        @[@"dollarsign.circle", @"FREE"],
+        @[@"arrow.down.to.line", @"Download(s)"],
+        @[@"icloud.slash", @"Watch Offline"],
+        @[@"nosign", @"No Ads/Account"],
+        @[@"arrow.triangle.2.circlepath", @"Anti-Update(s)"],
+    ];
+    for (NSUInteger i = 0; i < items.count; i++) {
+        if (i) [chips appendAttributedString:[[NSAttributedString alloc] initWithString:@"    "]];
+        [chips appendAttributedString:AHChip(items[i][0], items[i][1], cf, oc)];
+    }
+    UILabel *chipLabel = AHLabel(nil, cf, oc, 0);
+    chipLabel.attributedText = chips;
+    [body addArrangedSubview:chipLabel];
+
+    UIFont *lf = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
+    UILabel *l1 = AHLabel(@"DELvEK.NET", lf, AHGreen(), 1);
+    UILabel *l2 = AHLabel(@"Ł  DONATE LTC", lf, [UIColor colorWithWhite:1 alpha:0.9], 1);
+    UILabel *l3 = AHLabel(nil, lf, AHGreen(), 1);
+    NSMutableAttributedString *ppq = [[NSMutableAttributedString alloc] initWithString:@"PPQ TiMER" attributes:@{
+        NSFontAttributeName: lf, NSForegroundColorAttributeName: AHGreen() }];
+    [ppq appendAttributedString:[[NSAttributedString alloc] initWithString:[@" : " stringByAppendingString:AHPPQTimer()] attributes:@{
+        NSFontAttributeName: [UIFont systemFontOfSize:12], NSForegroundColorAttributeName: AHGray() }]];
+    l3.attributedText = ppq;
+    for (UILabel *l in @[l1, l2, l3]) { l.adjustsFontSizeToFitWidth = YES; l.minimumScaleFactor = 0.7; }
+    UIStackView *links = [[UIStackView alloc] initWithArrangedSubviews:@[l1, l2, l3]];
+    links.axis = UILayoutConstraintAxisHorizontal;
+    links.distribution = UIStackViewDistributionEqualSpacing;
+    [body addArrangedSubview:links];
+
+    [body addArrangedSubview:AHFeature(@"checkmark.shield", @"TRUSTCORE PROTECTiON", UIColor.whiteColor,
+        @"Blocks risky Apple endpoints to help you keep your certificate alive while you use this app.")];
+    [body addArrangedSubview:AHFeature(@"hand.tap", @"ANTiPiRACY SiGNATURE", UIColor.whiteColor,
+        @"App was Downloaded from DELvEK.NET")];
+    [body addArrangedSubview:AHFeature(@"info.circle", @"DELvEK's REPOSiTORY", AHGreen(),
+        @"Trusted status. This app was scanned & verified!")];
+
+    UILabel *more = AHLabel(@"& even more…", [UIFont systemFontOfSize:16 weight:UIFontWeightBold], UIColor.whiteColor, 1);
+    UILabel *revoke = AHLabel(@"App can only be revoked if apple invalidates AppiD.",
+                              [UIFont systemFontOfSize:12.5], AHGray(), 0);
+    UIStackView *moreCol = [[UIStackView alloc] initWithArrangedSubviews:@[more, revoke]];
+    moreCol.axis = UILayoutConstraintAxisVertical;
+    moreCol.spacing = 3;
+    [body addArrangedSubview:moreCol];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [head.topAnchor constraintEqualToAnchor:_card.topAnchor constant:16],
+        [head.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:16],
+        [head.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-16],
+
+        [_btn.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:16],
+        [_btn.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-16],
+        [_btn.bottomAnchor constraintEqualToAnchor:_card.bottomAnchor constant:-14],
+        [_btn.heightAnchor constraintEqualToConstant:44],
+
+        [_scroll.topAnchor constraintEqualToAnchor:head.bottomAnchor constant:10],
+        [_scroll.bottomAnchor constraintEqualToAnchor:_btn.topAnchor constant:-10],
+        [_scroll.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:16],
+        [_scroll.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-16],
+
+        [body.topAnchor constraintEqualToAnchor:_scroll.contentLayoutGuide.topAnchor],
+        [body.bottomAnchor constraintEqualToAnchor:_scroll.contentLayoutGuide.bottomAnchor],
+        [body.leadingAnchor constraintEqualToAnchor:_scroll.contentLayoutGuide.leadingAnchor],
+        [body.trailingAnchor constraintEqualToAnchor:_scroll.contentLayoutGuide.trailingAnchor],
+        [body.widthAnchor constraintEqualToAnchor:_scroll.frameLayoutGuide.widthAnchor],
+    ]];
+
+    _card.transform = CGAffineTransformMakeTranslation(0, 500);
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    [UIView animateWithDuration:0.55 delay:0 usingSpringWithDamping:0.86 initialSpringVelocity:0.6
+                        options:UIViewAnimationOptionCurveEaseOut animations:^{
+        self.card.transform = CGAffineTransformIdentity;
+        self.dim.alpha = 1;
+    } completion:^(BOOL f) { [self.scroll flashScrollIndicators]; }];
+    AHHaptic(0);
+
+    __weak typeof(self) ws = self;
+    _timer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) {
+        AHOnbVC *s = ws;
+        if (!s) { [t invalidate]; return; }
+        s.left--;
+        if (s.left > 0) {
+            [s.btn setTitle:[NSString stringWithFormat:@"Continue (%ld)", (long)s.left] forState:UIControlStateNormal];
+            AHHaptic(1);
+        } else {
+            [t invalidate];
+            s.timer = nil;
+            [s.btn setTitle:@"Continue" forState:UIControlStateNormal];
+            s.btn.enabled = YES;
+            AHHaptic(2);
+        }
+    }];
+    [NSRunLoop.mainRunLoop addTimer:_timer forMode:NSRunLoopCommonModes];
+}
+
+- (void)finish {
+    [_timer invalidate];
+    _timer = nil;
+    [UIView animateWithDuration:0.3 animations:^{
+        self.card.transform = CGAffineTransformMakeTranslation(0, self.card.bounds.size.height + 120);
+        self.dim.alpha = 0;
+    } completion:^(BOOL f) {
+        if (self.onDone) self.onDone();
+    }];
+}
+
+@end
+
+static UIWindow *gOnbWin;
+
+static void AHShowOnboarding(void) {
+    if (gOnbWin || AHOff()) return;
+    NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
+    if ([d boolForKey:kOnbOff]) return;
+#if !AH_ONBOARD_EVERY_LAUNCH
+    if ([d boolForKey:kOnbSeen]) return;
+#endif
+    UIWindowScene *scene = nil;
+    for (UIScene *s in UIApplication.sharedApplication.connectedScenes) {
+        if ([s isKindOfClass:UIWindowScene.class] && s.activationState == UISceneActivationStateForegroundActive) {
+            scene = (UIWindowScene *)s;
+            break;
+        }
+    }
+    UIWindow *w = scene ? [[UIWindow alloc] initWithWindowScene:scene]
+                        : [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    w.windowLevel = UIWindowLevelAlert + 50;
+    w.backgroundColor = UIColor.clearColor;
+    AHOnbVC *vc = [AHOnbVC new];
+    vc.onDone = ^{
+        gOnbWin.hidden = YES;
+        gOnbWin = nil;
+        [NSUserDefaults.standardUserDefaults setBool:YES forKey:kOnbSeen];
+    };
+    w.rootViewController = vc;
+    gOnbWin = w;
+    w.hidden = NO;
+}
+
+static void AHScheduleOnboarding(void) {
+    static BOOL once;
+    if (once) return;
+    once = YES;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{ AHShowOnboarding(); });
+}
+
 #pragma mark - Swizzles
 
 static void AHSwz(Class c, SEL o, SEL n) {
@@ -358,7 +768,7 @@ static void AHAfterAdd(UIView *parent, UIView *child) {
 - (void)ah_makeKeyAndVisible {
     if (AHOff()) { [self ah_makeKeyAndVisible]; return; }
     BOOL blocked = AHClassBlocked(object_getClass(self)) || AHStackFromBlocked();
-    if (!gMain && !blocked) gMain = self;
+    if (!gMain && !blocked && self != gOnbWin) gMain = self;
     if (blocked && self != AHMainWindow()) {
         self.hidden = YES;
         return;
@@ -366,7 +776,7 @@ static void AHAfterAdd(UIView *parent, UIView *child) {
     [self ah_makeKeyAndVisible];
 }
 - (void)ah_setHidden:(BOOL)h {
-    if (!h && !AHOff() && self != AHMainWindow() && gMain &&
+    if (!h && !AHOff() && self != gOnbWin && self != AHMainWindow() && gMain &&
         (AHClassBlocked(object_getClass(self)) || AHStackFromBlocked())) {
         h = YES;
     }
@@ -411,5 +821,8 @@ static void AirHideInit(void) {
                                                 usingBlock:^(NSNotification *n) { AHStartTimer(); }];
     [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification
                                                     object:nil queue:NSOperationQueue.mainQueue
-                                                usingBlock:^(NSNotification *n) { AHStartTimer(); }];
+                                                usingBlock:^(NSNotification *n) {
+        AHStartTimer();
+        AHScheduleOnboarding();
+    }];
 }
