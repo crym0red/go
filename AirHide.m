@@ -585,7 +585,7 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
 
     UIStackView *head = [[UIStackView alloc] initWithArrangedSubviews:@[strip, row]];
     head.axis = UILayoutConstraintAxisVertical;
-    head.spacing = 4;
+    head.spacing = -34;
     head.translatesAutoresizingMaskIntoConstraints = NO;
     [_card addSubview:head];
 
@@ -688,7 +688,7 @@ static UIView *AHFeature(NSString *sym, NSString *title, UIColor *titleColor, NS
     [body addArrangedSubview:moreCol];
 
     [NSLayoutConstraint activateConstraints:@[
-        [head.topAnchor constraintEqualToAnchor:_card.topAnchor constant:24],
+        [head.topAnchor constraintEqualToAnchor:_card.topAnchor constant:16],
         [head.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:18],
         [head.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-18],
 
