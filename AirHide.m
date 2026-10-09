@@ -438,6 +438,40 @@ static UIImage *AHSig(void) {
     return nil;
 }
 
+static UIView *AHTLRow(NSString *sym, NSString *title, UIColor *tc, UIColor *cc, NSString *sub) {
+    UILabel *t = AHLabel(title, [UIFont systemFontOfSize:14.5 weight:UIFontWeightSemibold], tc, 0);
+    UILabel *d = AHLabel(sub, [UIFont systemFontOfSize:12.5], [UIColor colorWithWhite:1 alpha:0.6], 0);
+    UIStackView *col = [[UIStackView alloc] initWithArrangedSubviews:@[t, d]];
+    col.axis = UILayoutConstraintAxisVertical;
+    col.spacing = 2;
+    col.translatesAutoresizingMaskIntoConstraints = NO;
+    UIView *row = [UIView new];
+    row.translatesAutoresizingMaskIntoConstraints = NO;
+    [row addSubview:col];
+    AHPin(col, row);
+    UIView *circ = [UIView new];
+    circ.translatesAutoresizingMaskIntoConstraints = NO;
+    circ.backgroundColor = [UIColor colorWithRed:24/255.0 green:24/255.0 blue:27/255.0 alpha:1];
+    circ.layer.cornerRadius = 13;
+    circ.layer.borderWidth = 2;
+    circ.layer.borderColor = cc.CGColor;
+    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:12 weight:UIImageSymbolWeightBold];
+    UIImageView *iv = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:sym withConfiguration:cfg]];
+    iv.tintColor = cc;
+    iv.translatesAutoresizingMaskIntoConstraints = NO;
+    [circ addSubview:iv];
+    [row addSubview:circ];
+    [NSLayoutConstraint activateConstraints:@[
+        [circ.widthAnchor constraintEqualToConstant:26],
+        [circ.heightAnchor constraintEqualToConstant:26],
+        [circ.leadingAnchor constraintEqualToAnchor:row.leadingAnchor constant:-36],
+        [circ.topAnchor constraintEqualToAnchor:row.topAnchor],
+        [iv.centerXAnchor constraintEqualToAnchor:circ.centerXAnchor],
+        [iv.centerYAnchor constraintEqualToAnchor:circ.centerYAnchor],
+    ]];
+    return row;
+}
+
 static CGFloat AHPPQFrac(void) {
     long d = 0, h = 0, m = 0;
     if (sscanf(AHPPQTimer().UTF8String, "%ldd %ldh %ldm", &d, &h, &m) != 3) return 0.02;
@@ -445,7 +479,7 @@ static CGFloat AHPPQFrac(void) {
     return (CGFloat)MAX(0.02, MIN(1.0, secs / (365 * 86400.0)));
 }
 
-static UIView *AHCheckRow(NSString *title, UIColor *tc, UIColor *cc, NSString *sub) {
+__attribute__((unused)) static UIView *AHCheckRow(NSString *title, UIColor *tc, UIColor *cc, NSString *sub) {
     UIView *circ = [UIView new];
     circ.translatesAutoresizingMaskIntoConstraints = NO;
     circ.backgroundColor = [cc colorWithAlphaComponent:0.18];
@@ -500,6 +534,11 @@ __attribute__((unused)) static UIView *AHFeature(NSString *sym, NSString *title,
 @property (nonatomic, strong) UIScrollView *scroll;
 @property (nonatomic, strong) UIView *dashView;
 @property (nonatomic, strong) CAShapeLayer *dashLayer;
+@property (nonatomic, strong) UIView *lineView;
+@property (nonatomic, strong) UIView *dash2View;
+@property (nonatomic, strong) CALayer *fillLayer;
+@property (nonatomic, strong) CAShapeLayer *dash2Layer;
+@property (nonatomic, strong) CAGradientLayer *lineGrad;
 @property (nonatomic, strong) NSTimer *timer;
 @property (nonatomic) NSInteger left;
 @property (nonatomic, copy) void (^onDone)(void);
@@ -650,18 +689,59 @@ __attribute__((unused)) static UIView *AHFeature(NSString *sym, NSString *title,
     // ---- footer: Continue (N) ----
     _btn = [UIButton buttonWithType:UIButtonTypeCustom];
     _btn.translatesAutoresizingMaskIntoConstraints = NO;
-    _btn.backgroundColor = AHOrange();
-    _btn.layer.cornerRadius = 23;
+    UIColor *gold = [UIColor colorWithRed:232/255.0 green:181/255.0 blue:116/255.0 alpha:1];
+    _btn.backgroundColor = UIColor.clearColor;
+    _btn.layer.borderWidth = 1.5;
+    _btn.layer.borderColor = AHOrange().CGColor;
+    _btn.layer.masksToBounds = YES;
+    _fillLayer = [CALayer layer];
+    _fillLayer.backgroundColor = [AHOrange() colorWithAlphaComponent:0.4].CGColor;
+    _fillLayer.anchorPoint = CGPointMake(0, 0.5);
+    _fillLayer.transform = CATransform3DMakeScale(0.0001, 1, 1);
+    [_btn.layer insertSublayer:_fillLayer atIndex:0];
+    _btn.layer.cornerRadius = 24;
+    [_btn.widthAnchor constraintGreaterThanOrEqualToConstant:150].active = YES;
     _btn.layer.cornerCurve = kCACornerCurveContinuous;
-    _btn.titleLabel.font = [UIFont systemFontOfSize:19 weight:UIFontWeightSemibold];
-    UIColor *dark = [UIColor colorWithWhite:0.1 alpha:1];
+    _btn.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
+    UIImage *arrow = [UIImage systemImageNamed:@"arrow.right" withConfiguration:
+        [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightSemibold]];
+    [_btn setImage:arrow forState:UIControlStateNormal];
+    [_btn setImage:arrow forState:UIControlStateDisabled];
+    _btn.tintColor = gold;
+    _btn.semanticContentAttribute = UISemanticContentAttributeForceRightToLeft;
+    _btn.contentEdgeInsets = UIEdgeInsetsMake(0, 20, 0, 20);
+    _btn.titleEdgeInsets = UIEdgeInsetsMake(0, -4, 0, 4);
+    _btn.imageEdgeInsets = UIEdgeInsetsMake(0, 4, 0, -4);
+    [_btn setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [_btn setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    UIColor *dark = gold;
     [_btn setTitleColor:dark forState:UIControlStateNormal];
     [_btn setTitleColor:dark forState:UIControlStateDisabled];
     [_btn addTarget:self action:@selector(finish) forControlEvents:UIControlEventTouchUpInside];
     _left = AH_COUNTDOWN_SECONDS;
     [_btn setTitle:[NSString stringWithFormat:@"Continue (%ld)", (long)_left] forState:UIControlStateNormal];
     _btn.enabled = NO;
-    [_card addSubview:_btn];
+    _dash2View = [UIView new];
+    _dash2View.translatesAutoresizingMaskIntoConstraints = NO;
+    _dash2Layer = [CAShapeLayer layer];
+    _dash2Layer.strokeColor = [UIColor colorWithWhite:1 alpha:0.22].CGColor;
+    _dash2Layer.lineWidth = 1;
+    _dash2Layer.lineDashPattern = @[@5, @4];
+    [_dash2View.layer addSublayer:_dash2Layer];
+    [_card addSubview:_dash2View];
+
+    UILabel *moreT = AHLabel(@"& even more\u2026", [UIFont systemFontOfSize:14.5 weight:UIFontWeightSemibold], UIColor.whiteColor, 1);
+    UILabel *moreS = AHLabel(@"App can only be revoked if apple invalidates AppiD.",
+                             [UIFont systemFontOfSize:11.5], [UIColor colorWithWhite:1 alpha:0.5], 0);
+    UIStackView *moreCol = [[UIStackView alloc] initWithArrangedSubviews:@[moreT, moreS]];
+    moreCol.axis = UILayoutConstraintAxisVertical;
+    moreCol.spacing = 2;
+    UIStackView *foot = [[UIStackView alloc] initWithArrangedSubviews:@[moreCol, _btn]];
+    foot.axis = UILayoutConstraintAxisHorizontal;
+    foot.alignment = UIStackViewAlignmentCenter;
+    foot.spacing = 10;
+    foot.translatesAutoresizingMaskIntoConstraints = NO;
+    [_card addSubview:foot];
 
     // ---- body: links row, info rows, even more ----
     _scroll = [UIScrollView new];
@@ -733,30 +813,54 @@ __attribute__((unused)) static UIView *AHFeature(NSString *sym, NSString *title,
     [body addArrangedSubview:_dashView];
     [body setCustomSpacing:14 afterView:_dashView];
 
-    [body addArrangedSubview:AHCheckRow(@"AIRCORE PROTECTiON", UIColor.whiteColor, AHOrange(),
-        @"Blocks risky Apple endpoints to help you keep your certificate alive while you use this app.")];
-    [body addArrangedSubview:AHCheckRow(@"ANTiPiRACY SiGNATURE", UIColor.whiteColor, AHOrange(),
-        @"App was Downloaded from AirShare.lol")];
-    [body addArrangedSubview:AHCheckRow(@"AirShare REPOSiTORY", AHGreen(), AHGreen(),
-        @"Trusted status. This app was scanned & verified!")];
+    UIView *tl = [UIView new];
+    tl.translatesAutoresizingMaskIntoConstraints = NO;
+    _lineView = [UIView new];
+    _lineView.translatesAutoresizingMaskIntoConstraints = NO;
+    _lineGrad = [CAGradientLayer layer];
+    _lineGrad.colors = @[(id)AHOrange().CGColor, (id)AHGreen().CGColor];
+    [_lineView.layer addSublayer:_lineGrad];
+    [tl addSubview:_lineView];
+    UIStackView *rows = [[UIStackView alloc] initWithArrangedSubviews:@[
+        AHTLRow(@"checkmark.shield", @"AIRCORE PROTECTiON", UIColor.whiteColor, AHOrange(),
+                @"Blocks risky Apple endpoints to help you keep your certificate alive while you use this app."),
+        AHTLRow(@"hand.tap", @"ANTiPiRACY SiGNATURE", UIColor.whiteColor, AHOrange(),
+                @"App was Downloaded from AirShare.lol"),
+        AHTLRow(@"checkmark", @"AirShare REPOSiTORY", AHGreen(), AHGreen(),
+                @"Trusted status. This app was scanned & verified!")]];
+    rows.axis = UILayoutConstraintAxisVertical;
+    rows.spacing = 14;
+    rows.translatesAutoresizingMaskIntoConstraints = NO;
+    [tl addSubview:rows];
+    [NSLayoutConstraint activateConstraints:@[
+        [rows.topAnchor constraintEqualToAnchor:tl.topAnchor],
+        [rows.bottomAnchor constraintEqualToAnchor:tl.bottomAnchor],
+        [rows.leadingAnchor constraintEqualToAnchor:tl.leadingAnchor constant:36],
+        [rows.trailingAnchor constraintEqualToAnchor:tl.trailingAnchor],
+        [_lineView.leadingAnchor constraintEqualToAnchor:tl.leadingAnchor constant:12],
+        [_lineView.widthAnchor constraintEqualToConstant:2],
+        [_lineView.topAnchor constraintEqualToAnchor:tl.topAnchor constant:13],
+        [_lineView.bottomAnchor constraintEqualToAnchor:tl.bottomAnchor constant:-13],
+    ]];
+    [body addArrangedSubview:tl];
     [body addArrangedSubview:row1];
-    UILabel *more = AHLabel(@"& even more\u2026 App can only be revoked if apple invalidates AppiD.",
-                            [UIFont systemFontOfSize:12], [UIColor colorWithWhite:1 alpha:0.5], 0);
-    more.textAlignment = NSTextAlignmentCenter;
-    [body addArrangedSubview:more];
 
     [NSLayoutConstraint activateConstraints:@[
         [head.topAnchor constraintEqualToAnchor:_card.topAnchor constant:16],
         [head.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:18],
         [head.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-18],
 
-        [_btn.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:18],
-        [_btn.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-18],
-        [_btn.bottomAnchor constraintEqualToAnchor:_card.bottomAnchor constant:-14],
-        [_btn.heightAnchor constraintEqualToConstant:46],
+        [foot.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:18],
+        [foot.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-18],
+        [foot.bottomAnchor constraintEqualToAnchor:_card.bottomAnchor constant:-14],
+        [_btn.heightAnchor constraintEqualToConstant:48],
+        [_dash2View.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:18],
+        [_dash2View.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-18],
+        [_dash2View.heightAnchor constraintEqualToConstant:1],
+        [_dash2View.bottomAnchor constraintEqualToAnchor:foot.topAnchor constant:-12],
 
         [_scroll.topAnchor constraintEqualToAnchor:head.bottomAnchor constant:12],
-        [_scroll.bottomAnchor constraintEqualToAnchor:_btn.topAnchor constant:-16],
+        [_scroll.bottomAnchor constraintEqualToAnchor:_dash2View.topAnchor constant:-12],
         [_scroll.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:18],
         [_scroll.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-18],
 
@@ -781,6 +885,13 @@ __attribute__((unused)) static UIView *AHFeature(NSString *sym, NSString *title,
     [p moveToPoint:CGPointMake(0, 0.5)];
     [p addLineToPoint:CGPointMake(w, 0.5)];
     _dashLayer.path = p.CGPath;
+    _lineGrad.frame = _lineView.bounds;
+    _fillLayer.bounds = _btn.bounds;
+    _fillLayer.position = CGPointMake(0, _btn.bounds.size.height / 2);
+    UIBezierPath *p2 = [UIBezierPath bezierPath];
+    [p2 moveToPoint:CGPointMake(0, 0.5)];
+    [p2 addLineToPoint:CGPointMake(_dash2View.bounds.size.width, 0.5)];
+    _dash2Layer.path = p2.CGPath;
 }
 
 - (void)viewDidAppear:(BOOL)animated {
@@ -790,6 +901,14 @@ __attribute__((unused)) static UIView *AHFeature(NSString *sym, NSString *title,
         self.card.transform = CGAffineTransformIdentity;
         self.dim.alpha = 1;
     } completion:^(BOOL f) { [self.scroll flashScrollIndicators]; }];
+
+    CABasicAnimation *sweep = [CABasicAnimation animationWithKeyPath:@"transform.scale.x"];
+    sweep.fromValue = @0.0001;
+    sweep.toValue = @1;
+    sweep.duration = AH_COUNTDOWN_SECONDS;
+    sweep.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
+    _fillLayer.transform = CATransform3DIdentity;
+    [_fillLayer addAnimation:sweep forKey:@"sweep"];
 
     __weak typeof(self) ws = self;
     _timer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) {
