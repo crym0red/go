@@ -9,7 +9,7 @@ clang -arch arm64 \
   -miphoneos-version-min=14.0 \
   -fobjc-arc -O2 \
   -dynamiclib \
-  -framework UIKit -framework Foundation \
+  -framework UIKit -framework Foundation -framework QuartzCore \
   -install_name @rpath/AirHide.dylib \
   -o AirHide.dylib \
   AirHide.m
