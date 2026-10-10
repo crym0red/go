@@ -596,9 +596,7 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
     st.translatesAutoresizingMaskIntoConstraints = NO;
     UIButton *b = [UIButton buttonWithType:UIButtonTypeCustom];
     b.translatesAutoresizingMaskIntoConstraints = NO;
-    b.backgroundColor = [UIColor colorWithWhite:1 alpha:0.10];
-    b.layer.cornerRadius = 14;
-    b.layer.cornerCurve = kCACornerCurveContinuous;
+    b.backgroundColor = UIColor.clearColor;
     [b addSubview:st];
     [NSLayoutConstraint activateConstraints:@[
         [st.topAnchor constraintEqualToAnchor:b.topAnchor constant:7],
@@ -620,6 +618,9 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
 @property (nonatomic, strong) UIScrollView *scroll;
 @property (nonatomic, strong) UIView *dashView;
 @property (nonatomic, strong) CAShapeLayer *dashLayer;
+@property (nonatomic, strong) UIView *glowView;
+@property (nonatomic, strong) CAGradientLayer *glowA;
+@property (nonatomic, strong) CAGradientLayer *glowB;
 @property (nonatomic, strong) UIView *lineView;
 @property (nonatomic, strong) UIView *dash2View;
 @property (nonatomic, strong) UISwitch *snooze;
@@ -656,10 +657,42 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
     [_card addSubview:blur];
     AHPin(blur, _card);
     UIView *tint = [UIView new];
-    tint.backgroundColor = [UIColor colorWithRed:22/255.0 green:22/255.0 blue:25/255.0 alpha:0.30];
+    tint.backgroundColor = [UIColor colorWithRed:22/255.0 green:22/255.0 blue:25/255.0 alpha:0.18];
     tint.userInteractionEnabled = NO;
     [_card addSubview:tint];
     AHPin(tint, _card);
+
+    // ambient gradient glow: two soft radial lights that slowly breathe
+    _glowView = [UIView new];
+    _glowView.userInteractionEnabled = NO;
+    [_card addSubview:_glowView];
+    AHPin(_glowView, _card);
+    _glowA = [CAGradientLayer layer];
+    _glowA.type = kCAGradientLayerRadial;
+    _glowA.colors = @[(id)[UIColor colorWithRed:1.0 green:0.62 blue:0.30 alpha:0.34].CGColor,
+                      (id)[UIColor colorWithRed:1.0 green:0.62 blue:0.30 alpha:0].CGColor];
+    _glowA.startPoint = CGPointMake(0.12, 0.05);
+    _glowA.endPoint = CGPointMake(1.0, 0.75);
+    _glowB = [CAGradientLayer layer];
+    _glowB.type = kCAGradientLayerRadial;
+    _glowB.colors = @[(id)[UIColor colorWithRed:0.52 green:0.40 blue:1.0 alpha:0.34].CGColor,
+                      (id)[UIColor colorWithRed:0.52 green:0.40 blue:1.0 alpha:0].CGColor];
+    _glowB.startPoint = CGPointMake(0.92, 0.95);
+    _glowB.endPoint = CGPointMake(0.0, 0.25);
+    [_glowView.layer addSublayer:_glowA];
+    [_glowView.layer addSublayer:_glowB];
+    NSArray *ds = @[@7.0, @9.0];
+    NSArray *ls = @[_glowA, _glowB];
+    for (NSInteger i = 0; i < 2; i++) {
+        CABasicAnimation *br = [CABasicAnimation animationWithKeyPath:@"opacity"];
+        br.fromValue = @0.55;
+        br.toValue = @1.0;
+        br.duration = [ds[i] doubleValue];
+        br.autoreverses = YES;
+        br.repeatCount = HUGE_VALF;
+        br.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+        [(CALayer *)ls[i] addAnimation:br forKey:@"breathe"];
+    }
 
     UIView *topEdge = [UIView new];
     topEdge.backgroundColor = [UIColor colorWithWhite:1 alpha:0.30];
@@ -768,8 +801,11 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
     [ppqBox addSubview:ppqCol];
     AHPin(ppqCol, ppqBox);
 
-    UILabel *tag = AHLabel(@"AirCore is now active, helping you keep your certificate safer.",
-                           [UIFont systemFontOfSize:12.5], [UIColor colorWithWhite:1 alpha:0.55], 0);
+    UILabel *tag = AHLabel(@"AirCore is now active, keeping your certificate safer.",
+                           [UIFont systemFontOfSize:12.5], [UIColor colorWithWhite:1 alpha:0.55], 1);
+    tag.adjustsFontSizeToFitWidth = YES;
+    tag.minimumScaleFactor = 0.8;
+    [tag setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisVertical];
 
     UIStackView *hdr = [[UIStackView alloc] initWithArrangedSubviews:@[icon, txt, rt]];
     hdr.axis = UILayoutConstraintAxisHorizontal;
@@ -911,7 +947,7 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
     UIStackView *tiles = [[UIStackView alloc] initWithArrangedSubviews:@[
         AHTile(AHAirShareLogo(), nil, @"AirShare.lol", @"https://airshare.lol"),
         AHTile(AHBotLogo(), @"\u2709", @"@FastDecryptBot", @"https://t.me/FastDecryptBot"),
-        AHTile(nil, @"\u0141", @"Donate LTC", nil),
+        AHTile(nil, @"\u0141", @"Donate", nil),
         AHTile(AHDelvekLogo(), @"D", @"DELvEK.NET", @"https://delvek.net")]];
     tiles.axis = UILayoutConstraintAxisHorizontal;
     tiles.distribution = UIStackViewDistributionFillEqually;
@@ -922,20 +958,21 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
     UILabel *snL = AHLabel(@"Don\u2019t show again today", [UIFont systemFontOfSize:12.5], [UIColor colorWithWhite:1 alpha:0.8], 1);
     _snooze = [UISwitch new];
     _snooze.onTintColor = AHGreen();
-    _snooze.transform = CGAffineTransformMakeScale(0.8, 0.8);
     UIView *swWrap = [UIView new];
     swWrap.translatesAutoresizingMaskIntoConstraints = NO;
     _snooze.translatesAutoresizingMaskIntoConstraints = NO;
     [swWrap addSubview:_snooze];
     [NSLayoutConstraint activateConstraints:@[
-        [swWrap.widthAnchor constraintEqualToConstant:44],
-        [swWrap.heightAnchor constraintEqualToConstant:28],
+        [swWrap.widthAnchor constraintEqualToConstant:51],
+        [swWrap.heightAnchor constraintEqualToConstant:31],
         [_snooze.centerXAnchor constraintEqualToAnchor:swWrap.centerXAnchor],
         [_snooze.centerYAnchor constraintEqualToAnchor:swWrap.centerYAnchor],
     ]];
     UIStackView *snRow = [[UIStackView alloc] initWithArrangedSubviews:@[snL, swWrap]];
     snRow.axis = UILayoutConstraintAxisHorizontal;
     snRow.alignment = UIStackViewAlignmentCenter;
+    snRow.layoutMarginsRelativeArrangement = YES;
+    snRow.layoutMargins = UIEdgeInsetsMake(0, 0, 0, 4);
     [body addArrangedSubview:snRow];
 
     [NSLayoutConstraint activateConstraints:@[
@@ -979,6 +1016,8 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
     [p addLineToPoint:CGPointMake(w, 0.5)];
     _dashLayer.path = p.CGPath;
     _lineGrad.frame = _lineView.bounds;
+    _glowA.frame = _glowView.bounds;
+    _glowB.frame = _glowView.bounds;
     UIBezierPath *p2 = [UIBezierPath bezierPath];
     [p2 moveToPoint:CGPointMake(0, 0.5)];
     [p2 addLineToPoint:CGPointMake(_dash2View.bounds.size.width, 0.5)];
