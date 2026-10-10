@@ -492,10 +492,10 @@ static UIView *AHFlatRow(NSString *sym, NSString *title, UIColor *tc, UIColor *i
         [top.leadingAnchor constraintEqualToAnchor:row.leadingAnchor],
         [top.trailingAnchor constraintEqualToAnchor:row.trailingAnchor],
         [top.heightAnchor constraintEqualToConstant:0.5],
-        [h.topAnchor constraintEqualToAnchor:row.topAnchor constant:11],
+        [h.topAnchor constraintEqualToAnchor:row.topAnchor constant:7],
         [h.leadingAnchor constraintEqualToAnchor:row.leadingAnchor],
         [h.trailingAnchor constraintEqualToAnchor:row.trailingAnchor],
-        [h.bottomAnchor constraintEqualToAnchor:row.bottomAnchor constant:-11],
+        [h.bottomAnchor constraintEqualToAnchor:row.bottomAnchor constant:-7],
     ]];
     if (last) {
         UIView *bot = [UIView new];
@@ -575,13 +575,13 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
         iv.layer.cornerRadius = 7;
         iv.layer.masksToBounds = YES;
         iv.translatesAutoresizingMaskIntoConstraints = NO;
-        [iv.widthAnchor constraintEqualToConstant:28].active = YES;
-        [iv.heightAnchor constraintEqualToConstant:28].active = YES;
+        [iv.widthAnchor constraintEqualToConstant:24].active = YES;
+        [iv.heightAnchor constraintEqualToConstant:24].active = YES;
         iconV = iv;
     } else {
         UILabel *g = AHLabel(glyph ?: @"", [UIFont systemFontOfSize:24 weight:UIFontWeightSemibold], AHGold(), 1);
         g.textAlignment = NSTextAlignmentCenter;
-        [g.heightAnchor constraintEqualToConstant:28].active = YES;
+        [g.heightAnchor constraintEqualToConstant:24].active = YES;
         iconV = g;
     }
     UILabel *t = AHLabel(title, [UIFont systemFontOfSize:11 weight:UIFontWeightMedium], UIColor.whiteColor, 1);
@@ -591,7 +591,7 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
     UIStackView *st = [[UIStackView alloc] initWithArrangedSubviews:@[iconV, t]];
     st.axis = UILayoutConstraintAxisVertical;
     st.alignment = UIStackViewAlignmentCenter;
-    st.spacing = 5;
+    st.spacing = 3;
     st.userInteractionEnabled = NO;
     st.translatesAutoresizingMaskIntoConstraints = NO;
     UIButton *b = [UIButton buttonWithType:UIButtonTypeCustom];
@@ -601,8 +601,8 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
     b.layer.cornerCurve = kCACornerCurveContinuous;
     [b addSubview:st];
     [NSLayoutConstraint activateConstraints:@[
-        [st.topAnchor constraintEqualToAnchor:b.topAnchor constant:10],
-        [st.bottomAnchor constraintEqualToAnchor:b.bottomAnchor constant:-9],
+        [st.topAnchor constraintEqualToAnchor:b.topAnchor constant:7],
+        [st.bottomAnchor constraintEqualToAnchor:b.bottomAnchor constant:-6],
         [st.leadingAnchor constraintEqualToAnchor:b.leadingAnchor constant:3],
         [st.trailingAnchor constraintEqualToAnchor:b.trailingAnchor constant:-3],
     ]];
@@ -684,12 +684,12 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
     // ---- header: [PPQ timer ........ signature] / [icon | name + bundle + tagline] ----
     UIImageView *icon = [[UIImageView alloc] initWithImage:AHAppIcon()];
     icon.contentMode = UIViewContentModeScaleAspectFill;
-    icon.layer.cornerRadius = 13;
+    icon.layer.cornerRadius = 11;
     icon.layer.cornerCurve = kCACornerCurveContinuous;
     icon.layer.masksToBounds = YES;
     icon.translatesAutoresizingMaskIntoConstraints = NO;
-    [icon.widthAnchor constraintEqualToConstant:52].active = YES;
-    [icon.heightAnchor constraintEqualToConstant:52].active = YES;
+    [icon.widthAnchor constraintEqualToConstant:46].active = YES;
+    [icon.heightAnchor constraintEqualToConstant:46].active = YES;
 
     UILabel *name = AHLabel([NSString stringWithFormat:@"[ %@ ]", AHAppName()],
                             [UIFont systemFontOfSize:19 weight:UIFontWeightSemibold], UIColor.whiteColor, 1);
@@ -722,9 +722,7 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
 
     [sigRow setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
     [sigRow setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-    UILabel *botL = AHLabel(@"@FastDecryptBot", [UIFont systemFontOfSize:12],
-                            [UIColor colorWithWhite:1 alpha:0.55], 1);
-    UIStackView *rt = [[UIStackView alloc] initWithArrangedSubviews:@[sigRow, botL]];
+    UIStackView *rt = [[UIStackView alloc] initWithArrangedSubviews:@[sigRow]];
     rt.axis = UILayoutConstraintAxisVertical;
     rt.alignment = UIStackViewAlignmentTrailing;
     rt.spacing = 2;
@@ -759,9 +757,9 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
     ]];
     UIStackView *ppqCol = [[UIStackView alloc] initWithArrangedSubviews:@[ppqRow, track]];
     ppqCol.axis = UILayoutConstraintAxisVertical;
-    ppqCol.spacing = 7;
+    ppqCol.spacing = 5;
     ppqCol.layoutMarginsRelativeArrangement = YES;
-    ppqCol.layoutMargins = UIEdgeInsetsMake(2, 0, 2, 0);
+    ppqCol.layoutMargins = UIEdgeInsetsMake(0, 0, 0, 0);
     UIView *ppqBox = [UIView new];
     ppqBox.translatesAutoresizingMaskIntoConstraints = NO;
     ppqBox.backgroundColor = UIColor.clearColor;
@@ -781,7 +779,7 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
 
     UIStackView *head = [[UIStackView alloc] initWithArrangedSubviews:@[hdr, ppqBox, tag]];
     head.axis = UILayoutConstraintAxisVertical;
-    head.spacing = 12;
+    head.spacing = 8;
     head.translatesAutoresizingMaskIntoConstraints = NO;
     [_card addSubview:head];
 
@@ -791,7 +789,7 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
     UIColor *gold = [UIColor colorWithWhite:0.08 alpha:1];
     _btn.backgroundColor = [UIColor colorWithWhite:1 alpha:0.92];
     _btn.layer.masksToBounds = YES;
-    _btn.layer.cornerRadius = 24;
+    _btn.layer.cornerRadius = 22;
     [_btn.widthAnchor constraintGreaterThanOrEqualToConstant:150].active = YES;
     _btn.layer.cornerCurve = kCACornerCurveContinuous;
     _btn.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
@@ -824,7 +822,7 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
     UIStackView *foot = [[UIStackView alloc] initWithArrangedSubviews:@[moreCol, _btn]];
     foot.axis = UILayoutConstraintAxisHorizontal;
     foot.alignment = UIStackViewAlignmentCenter;
-    foot.spacing = 10;
+    foot.spacing = 8;
     foot.translatesAutoresizingMaskIntoConstraints = NO;
     [_card addSubview:foot];
 
@@ -837,7 +835,7 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
 
     UIStackView *body = [UIStackView new];
     body.axis = UILayoutConstraintAxisVertical;
-    body.spacing = 12;
+    body.spacing = 8;
     body.translatesAutoresizingMaskIntoConstraints = NO;
     [_scroll addSubview:body];
 
@@ -919,7 +917,7 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
     tiles.distribution = UIStackViewDistributionFillEqually;
     tiles.spacing = 8;
     [body addArrangedSubview:tiles];
-    [body setCustomSpacing:14 afterView:tiles];
+    [body setCustomSpacing:8 afterView:tiles];
 
     UILabel *snL = AHLabel(@"Don\u2019t show again today", [UIFont systemFontOfSize:12.5], [UIColor colorWithWhite:1 alpha:0.8], 1);
     _snooze = [UISwitch new];
@@ -941,21 +939,21 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
     [body addArrangedSubview:snRow];
 
     [NSLayoutConstraint activateConstraints:@[
-        [head.topAnchor constraintEqualToAnchor:_card.topAnchor constant:16],
+        [head.topAnchor constraintEqualToAnchor:_card.topAnchor constant:14],
         [head.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:18],
         [head.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-18],
 
         [foot.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:18],
         [foot.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-18],
-        [foot.bottomAnchor constraintEqualToAnchor:_card.bottomAnchor constant:-14],
-        [_btn.heightAnchor constraintEqualToConstant:48],
+        [foot.bottomAnchor constraintEqualToAnchor:_card.bottomAnchor constant:-12],
+        [_btn.heightAnchor constraintEqualToConstant:44],
         [_dash2View.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:18],
         [_dash2View.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-18],
         [_dash2View.heightAnchor constraintEqualToConstant:1],
-        [_dash2View.bottomAnchor constraintEqualToAnchor:foot.topAnchor constant:-12],
+        [_dash2View.bottomAnchor constraintEqualToAnchor:foot.topAnchor constant:-6],
 
-        [_scroll.topAnchor constraintEqualToAnchor:head.bottomAnchor constant:12],
-        [_scroll.bottomAnchor constraintEqualToAnchor:_dash2View.topAnchor constant:-12],
+        [_scroll.topAnchor constraintEqualToAnchor:head.bottomAnchor constant:6],
+        [_scroll.bottomAnchor constraintEqualToAnchor:_dash2View.topAnchor constant:-6],
         [_scroll.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:18],
         [_scroll.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-18],
 
