@@ -15,6 +15,11 @@ if [ -f BotLogo.png ]; then
   xxd -i BotLogo.png > BotLogo.h
 fi
 
+rm -f AirCoreLogo.h
+if [ -f AirCoreLogo.png ]; then
+  xxd -i AirCoreLogo.png > AirCoreLogo.h
+fi
+
 rm -f DelvekLogo.h
 [ -f DelvekLogo.png ] || curl -fsSL -m 30 -o DelvekLogo.png https://delvek.net/img/delvek4.png || rm -f DelvekLogo.png
 if [ -f DelvekLogo.png ]; then

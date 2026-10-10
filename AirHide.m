@@ -28,6 +28,10 @@
 #import <CoreHaptics/CoreHaptics.h>
 
 // Optional: put AirShareLogo.png in the repo root; build.sh embeds it here.
+#if __has_include("AirCoreLogo.h")
+#include "AirCoreLogo.h"
+#define AH_HAS_AIRCORE 1
+#endif
 #if __has_include("BotLogo.h")
 #include "BotLogo.h"
 #define AH_HAS_BOT 1
@@ -361,6 +365,15 @@ static UIImage *AHAirShareLogo(void) {
     }];
 }
 
+static UIImage *AHAirCoreLogo(void) {
+#ifdef AH_HAS_AIRCORE
+    NSData *d = [NSData dataWithBytes:AirCoreLogo_png length:AirCoreLogo_png_len];
+    return [UIImage imageWithData:d scale:UIScreen.mainScreen.scale];
+#else
+    return nil;
+#endif
+}
+
 static UIImage *AHBotLogo(void) {
 #ifdef AH_HAS_BOT
     NSData *d = [NSData dataWithBytes:BotLogo_png length:BotLogo_png_len];
@@ -623,7 +636,6 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
 @property (nonatomic, strong) CAGradientLayer *glowB;
 @property (nonatomic, strong) UIView *lineView;
 @property (nonatomic, strong) UIView *dash2View;
-@property (nonatomic, strong) UISwitch *snooze;
 @property (nonatomic, strong) CAShapeLayer *dash2Layer;
 @property (nonatomic, strong) CAGradientLayer *lineGrad;
 @property (nonatomic, strong) NSTimer *timer;
@@ -955,33 +967,11 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
     [body addArrangedSubview:tiles];
     [body setCustomSpacing:8 afterView:tiles];
 
-    UILabel *snL = AHLabel(@"Don\u2019t show again today", [UIFont systemFontOfSize:12.5], [UIColor colorWithWhite:1 alpha:0.8], 1);
-    _snooze = [UISwitch new];
-    _snooze.onTintColor = AHGreen();
-    UIView *swWrap = [UIView new];
-    swWrap.translatesAutoresizingMaskIntoConstraints = NO;
-    _snooze.translatesAutoresizingMaskIntoConstraints = NO;
-    [swWrap addSubview:_snooze];
-    [NSLayoutConstraint activateConstraints:@[
-        [swWrap.widthAnchor constraintEqualToConstant:63],
-        [swWrap.heightAnchor constraintEqualToConstant:35],
-        [_snooze.widthAnchor constraintEqualToConstant:51],
-        [_snooze.heightAnchor constraintEqualToConstant:31],
-        [_snooze.leadingAnchor constraintEqualToAnchor:swWrap.leadingAnchor constant:4],
-        [_snooze.centerYAnchor constraintEqualToAnchor:swWrap.centerYAnchor],
-    ]];
-    [swWrap setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-    [swWrap setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-    [snL setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
-    snL.adjustsFontSizeToFitWidth = YES;
-    snL.minimumScaleFactor = 0.8;
-    UIStackView *snRow = [[UIStackView alloc] initWithArrangedSubviews:@[snL, swWrap]];
-    snRow.axis = UILayoutConstraintAxisHorizontal;
-    snRow.alignment = UIStackViewAlignmentCenter;
-    snRow.spacing = 6;
-    snRow.layoutMarginsRelativeArrangement = YES;
-    snRow.layoutMargins = UIEdgeInsetsMake(0, 0, 0, 0);
-    [body addArrangedSubview:snRow];
+    UIView *dv = [UIView new];
+    dv.translatesAutoresizingMaskIntoConstraints = NO;
+    dv.backgroundColor = [UIColor colorWithWhite:1 alpha:0.14];
+    [dv.heightAnchor constraintEqualToConstant:0.5].active = YES;
+    [body addArrangedSubview:dv];
 
     [NSLayoutConstraint activateConstraints:@[
         [head.topAnchor constraintEqualToAnchor:_card.topAnchor constant:14],
@@ -1058,7 +1048,6 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
 }
 
 - (void)finish {
-    if (_snooze.isOn) [NSUserDefaults.standardUserDefaults setObject:AHToday() forKey:@"AirHideSnoozeDay"];
     [_timer invalidate];
     _timer = nil;
     [UIView animateWithDuration:0.3 animations:^{
@@ -1093,10 +1082,9 @@ static void AHShowToast(void) {
     UIVisualEffectView *card = [[UIVisualEffectView alloc] initWithEffect:
         [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark]];
     card.translatesAutoresizingMaskIntoConstraints = NO;
-    card.layer.cornerRadius = 26;
+    card.layer.cornerRadius = 30;
+    if (@available(iOS 13.0, *)) card.layer.cornerCurve = kCACornerCurveContinuous;
     card.clipsToBounds = YES;
-    card.layer.borderWidth = 0.5;
-    card.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.18].CGColor;
     card.alpha = 0;
     card.transform = CGAffineTransformMakeScale(0.92, 0.92);
     [vc.view addSubview:card];
@@ -1106,61 +1094,111 @@ static void AHShowToast(void) {
     tint.backgroundColor = [UIColor colorWithRed:0.13 green:0.13 blue:0.19 alpha:0.35];
     [card.contentView addSubview:tint];
 
-    UIView *ring = [UIView new];
-    ring.translatesAutoresizingMaskIntoConstraints = NO;
-    [ring.widthAnchor constraintEqualToConstant:44].active = YES;
-    [ring.heightAnchor constraintEqualToConstant:44].active = YES;
-    CAShapeLayer *track = [CAShapeLayer layer];
-    CAShapeLayer *prog = [CAShapeLayer layer];
-    UIBezierPath *ph = [UIBezierPath bezierPathWithArcCenter:CGPointMake(22, 22) radius:20.5
-        startAngle:-M_PI_2 endAngle:M_PI * 1.5 clockwise:YES];
-    for (CAShapeLayer *l in @[track, prog]) {
-        l.path = ph.CGPath;
-        l.fillColor = UIColor.clearColor.CGColor;
-        l.lineWidth = 3;
-        l.lineCap = kCALineCapRound;
-        [ring.layer addSublayer:l];
-    }
-    track.strokeColor = [UIColor colorWithWhite:1 alpha:0.12].CGColor;
-    prog.strokeColor = AHGreen().CGColor;
-    UILabel *num = AHLabel(@"3", [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold], UIColor.whiteColor, 1);
-    num.textAlignment = NSTextAlignmentCenter;
-    num.translatesAutoresizingMaskIntoConstraints = NO;
-    [ring addSubview:num];
-    [NSLayoutConstraint activateConstraints:@[
-        [num.centerXAnchor constraintEqualToAnchor:ring.centerXAnchor],
-        [num.centerYAnchor constraintEqualToAnchor:ring.centerYAnchor]]];
+    UIImageView *icon = [[UIImageView alloc] initWithImage:AHAppIcon()];
+    icon.translatesAutoresizingMaskIntoConstraints = NO;
+    icon.contentMode = UIViewContentModeScaleAspectFill;
+    icon.layer.cornerRadius = 15;
+    if (@available(iOS 13.0, *)) icon.layer.cornerCurve = kCACornerCurveContinuous;
+    icon.clipsToBounds = YES;
+    [icon.widthAnchor constraintEqualToConstant:60].active = YES;
+    [icon.heightAnchor constraintEqualToConstant:60].active = YES;
 
-    UILabel *l1 = AHLabel(@"Enjoy", [UIFont systemFontOfSize:11], [UIColor colorWithWhite:1 alpha:0.5], 1);
-    UILabel *l2 = AHLabel(AHAppName(), [UIFont systemFontOfSize:19 weight:UIFontWeightSemibold], UIColor.whiteColor, 1);
-    UILabel *l3 = AHLabel(@"AirShare.lol", [UIFont systemFontOfSize:12], AHGreen(), 1);
+    UILabel *l1 = AHLabel(@"Enjoy", [UIFont systemFontOfSize:13], [UIColor colorWithWhite:1 alpha:0.5], 1);
+    UILabel *l2 = AHLabel(AHAppName(), [UIFont systemFontOfSize:25 weight:UIFontWeightSemibold], UIColor.whiteColor, 1);
+    l2.adjustsFontSizeToFitWidth = YES;
+    l2.minimumScaleFactor = 0.6;
+    UILabel *l3 = AHLabel(@"AirShare.lol", [UIFont systemFontOfSize:14], AHGreen(), 1);
     UIStackView *tx = [[UIStackView alloc] initWithArrangedSubviews:@[l1, l2, l3]];
     tx.axis = UILayoutConstraintAxisVertical;
     tx.spacing = 1;
-    UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[tx, ring]];
+    [tx setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+
+    UIImageView *core = [[UIImageView alloc] initWithImage:AHAirCoreLogo()];
+    core.translatesAutoresizingMaskIntoConstraints = NO;
+    core.contentMode = UIViewContentModeScaleAspectFit;
+    [core.widthAnchor constraintEqualToConstant:52].active = YES;
+    [core.heightAnchor constraintEqualToConstant:52].active = YES;
+
+    UIImageSymbolConfiguration *sc = [UIImageSymbolConfiguration configurationWithPointSize:11 weight:UIImageSymbolWeightBold];
+    UIImageView *seal = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"checkmark.seal.fill" withConfiguration:sc]];
+    seal.tintColor = AHGreen();
+    UILabel *vl = AHLabel(@"AirCore", [UIFont systemFontOfSize:11.5 weight:UIFontWeightSemibold], AHGreen(), 1);
+    UIStackView *bs = [[UIStackView alloc] initWithArrangedSubviews:@[seal, vl]];
+    bs.axis = UILayoutConstraintAxisHorizontal;
+    bs.alignment = UIStackViewAlignmentCenter;
+    bs.spacing = 4;
+    bs.layoutMarginsRelativeArrangement = YES;
+    bs.layoutMargins = UIEdgeInsetsMake(3, 8, 3, 8);
+    UIView *bg = [UIView new];
+    bg.translatesAutoresizingMaskIntoConstraints = NO;
+    bg.backgroundColor = [AHGreen() colorWithAlphaComponent:0.14];
+    bg.layer.cornerRadius = 11;
+    bg.clipsToBounds = YES;
+    bs.translatesAutoresizingMaskIntoConstraints = NO;
+    [bg addSubview:bs];
+    [NSLayoutConstraint activateConstraints:@[
+        [bs.topAnchor constraintEqualToAnchor:bg.topAnchor],
+        [bs.bottomAnchor constraintEqualToAnchor:bg.bottomAnchor],
+        [bs.leadingAnchor constraintEqualToAnchor:bg.leadingAnchor],
+        [bs.trailingAnchor constraintEqualToAnchor:bg.trailingAnchor]]];
+    UIStackView *rt = [[UIStackView alloc] initWithArrangedSubviews:@[core, bg]];
+    rt.axis = UILayoutConstraintAxisVertical;
+    rt.alignment = UIStackViewAlignmentCenter;
+    rt.spacing = 5;
+    [rt setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+
+    UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[icon, tx, rt]];
     row.axis = UILayoutConstraintAxisHorizontal;
     row.alignment = UIStackViewAlignmentCenter;
-    row.spacing = 16;
+    row.spacing = 14;
     row.translatesAutoresizingMaskIntoConstraints = NO;
     [card.contentView addSubview:row];
 
     [NSLayoutConstraint activateConstraints:@[
         [card.centerXAnchor constraintEqualToAnchor:vc.view.centerXAnchor],
         [card.centerYAnchor constraintEqualToAnchor:vc.view.centerYAnchor],
-        [card.widthAnchor constraintLessThanOrEqualToAnchor:vc.view.widthAnchor constant:-48],
+        [card.widthAnchor constraintEqualToConstant:326],
+        [card.widthAnchor constraintLessThanOrEqualToAnchor:vc.view.widthAnchor constant:-32],
         [tint.topAnchor constraintEqualToAnchor:card.contentView.topAnchor],
         [tint.bottomAnchor constraintEqualToAnchor:card.contentView.bottomAnchor],
         [tint.leadingAnchor constraintEqualToAnchor:card.contentView.leadingAnchor],
         [tint.trailingAnchor constraintEqualToAnchor:card.contentView.trailingAnchor],
-        [row.topAnchor constraintEqualToAnchor:card.contentView.topAnchor constant:14],
-        [row.bottomAnchor constraintEqualToAnchor:card.contentView.bottomAnchor constant:-14],
-        [row.leadingAnchor constraintEqualToAnchor:card.contentView.leadingAnchor constant:20],
-        [row.trailingAnchor constraintEqualToAnchor:card.contentView.trailingAnchor constant:-18],
+        [row.topAnchor constraintEqualToAnchor:card.contentView.topAnchor constant:22],
+        [row.bottomAnchor constraintEqualToAnchor:card.contentView.bottomAnchor constant:-22],
+        [row.leadingAnchor constraintEqualToAnchor:card.contentView.leadingAnchor constant:22],
+        [row.trailingAnchor constraintEqualToAnchor:card.contentView.trailingAnchor constant:-24],
     ]];
 
     gToastWin = w;
     w.hidden = NO;
     [vc.view layoutIfNeeded];
+
+    // Border timer: track + green progress that drains clockwise from top centre.
+    CGRect r = CGRectInset(card.bounds, 1.5, 1.5);
+    CGFloat rad = 28.5, x0 = CGRectGetMinX(r), x1 = CGRectGetMaxX(r), y0 = CGRectGetMinY(r), y1 = CGRectGetMaxY(r);
+    UIBezierPath *bp = [UIBezierPath bezierPath];
+    [bp moveToPoint:CGPointMake(CGRectGetMidX(r), y0)];
+    [bp addLineToPoint:CGPointMake(x1 - rad, y0)];
+    [bp addArcWithCenter:CGPointMake(x1 - rad, y0 + rad) radius:rad startAngle:-M_PI_2 endAngle:0 clockwise:YES];
+    [bp addLineToPoint:CGPointMake(x1, y1 - rad)];
+    [bp addArcWithCenter:CGPointMake(x1 - rad, y1 - rad) radius:rad startAngle:0 endAngle:M_PI_2 clockwise:YES];
+    [bp addLineToPoint:CGPointMake(x0 + rad, y1)];
+    [bp addArcWithCenter:CGPointMake(x0 + rad, y1 - rad) radius:rad startAngle:M_PI_2 endAngle:M_PI clockwise:YES];
+    [bp addLineToPoint:CGPointMake(x0, y0 + rad)];
+    [bp addArcWithCenter:CGPointMake(x0 + rad, y0 + rad) radius:rad startAngle:M_PI endAngle:M_PI * 1.5 clockwise:YES];
+    [bp addLineToPoint:CGPointMake(CGRectGetMidX(r), y0)];
+    CAShapeLayer *track = [CAShapeLayer layer];
+    CAShapeLayer *prog = [CAShapeLayer layer];
+    for (CAShapeLayer *l in @[track, prog]) {
+        l.frame = card.bounds;
+        l.path = bp.CGPath;
+        l.fillColor = UIColor.clearColor.CGColor;
+        l.lineWidth = 3;
+        l.lineCap = kCALineCapRound;
+        [card.layer addSublayer:l];
+    }
+    track.strokeColor = [UIColor colorWithWhite:1 alpha:0.14].CGColor;
+    prog.strokeColor = AHGreen().CGColor;
 
     CABasicAnimation *a = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
     a.fromValue = @1; a.toValue = @0; a.duration = 3.0;
@@ -1177,7 +1215,7 @@ static void AHShowToast(void) {
     __block int left = 3;
     NSTimer *t = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *tm) {
         left--;
-        if (left > 0) { num.text = [NSString stringWithFormat:@"%d", left]; return; }
+        if (left > 0) return;
         [tm invalidate];
         [UIView animateWithDuration:0.3 animations:^{
             card.alpha = 0;
