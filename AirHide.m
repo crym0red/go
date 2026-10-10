@@ -28,6 +28,10 @@
 #import <CoreHaptics/CoreHaptics.h>
 
 // Optional: put AirShareLogo.png in the repo root; build.sh embeds it here.
+#if __has_include("BotLogo.h")
+#include "BotLogo.h"
+#define AH_HAS_BOT 1
+#endif
 #if __has_include("DelvekLogo.h")
 #include "DelvekLogo.h"
 #define AH_HAS_DELVEK 1
@@ -336,7 +340,8 @@ static void AHStartTimer(void) {
 #pragma mark - Onboarding: data
 
 static UIColor *AHOrange(void) { return [UIColor colorWithRed:196/255.0 green:138/255.0 blue:75/255.0 alpha:1]; }
-static UIColor *AHGreen(void)  { return [UIColor colorWithRed:92/255.0 green:200/255.0 blue:122/255.0 alpha:1]; }
+static UIColor *AHGreen(void)  { return [UIColor colorWithRed:143/255.0 green:240/255.0 blue:166/255.0 alpha:1]; }
+static UIColor *AHGold(void)   { return [UIColor colorWithRed:255/255.0 green:217/255.0 blue:168/255.0 alpha:1]; }
 static UIColor *AHGray(void)   { return [UIColor colorWithWhite:1 alpha:0.62]; }
 
 static UIImage *AHAirShareLogo(void) {
@@ -354,6 +359,26 @@ static UIImage *AHAirShareLogo(void) {
         CGSize z = [@"A" sizeWithAttributes:a];
         [@"A" drawAtPoint:CGPointMake((64 - z.width) / 2, (64 - z.height) / 2) withAttributes:a];
     }];
+}
+
+static UIImage *AHBotLogo(void) {
+#ifdef AH_HAS_BOT
+    NSData *d = [NSData dataWithBytes:BotLogo_png length:BotLogo_png_len];
+    return [UIImage imageWithData:d scale:UIScreen.mainScreen.scale];
+#else
+    return nil;
+#endif
+}
+
+static void AHOpen(NSString *u) {
+    NSURL *url = [NSURL URLWithString:u];
+    if (url) [UIApplication.sharedApplication openURL:url options:@{} completionHandler:nil];
+}
+
+static NSString *AHToday(void) {
+    NSDateFormatter *f = [NSDateFormatter new];
+    f.dateFormat = @"yyyy-MM-dd";
+    return [f stringFromDate:NSDate.date];
 }
 
 static UIImage *AHDelvekLogo(void) {
@@ -438,37 +463,52 @@ static UIImage *AHSig(void) {
     return nil;
 }
 
-static UIView *AHTLRow(NSString *sym, NSString *title, UIColor *tc, UIColor *cc, NSString *sub) {
+static UIView *AHFlatRow(NSString *sym, NSString *title, UIColor *tc, UIColor *ic, NSString *sub, BOOL last) {
     UILabel *t = AHLabel(title, [UIFont systemFontOfSize:14.5 weight:UIFontWeightSemibold], tc, 0);
-    UILabel *d = AHLabel(sub, [UIFont systemFontOfSize:12.5], [UIColor colorWithWhite:1 alpha:0.6], 0);
+    UILabel *d = AHLabel(sub, [UIFont systemFontOfSize:12.5], [UIColor colorWithWhite:1 alpha:0.62], 0);
     UIStackView *col = [[UIStackView alloc] initWithArrangedSubviews:@[t, d]];
     col.axis = UILayoutConstraintAxisVertical;
     col.spacing = 2;
-    col.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:20 weight:UIImageSymbolWeightRegular];
+    UIImageView *iv = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:sym withConfiguration:cfg]];
+    iv.tintColor = ic;
+    iv.contentMode = UIViewContentModeTop;
+    iv.translatesAutoresizingMaskIntoConstraints = NO;
+    [iv.widthAnchor constraintEqualToConstant:26].active = YES;
+    UIStackView *h = [[UIStackView alloc] initWithArrangedSubviews:@[iv, col]];
+    h.axis = UILayoutConstraintAxisHorizontal;
+    h.alignment = UIStackViewAlignmentTop;
+    h.spacing = 11;
+    h.translatesAutoresizingMaskIntoConstraints = NO;
     UIView *row = [UIView new];
     row.translatesAutoresizingMaskIntoConstraints = NO;
-    [row addSubview:col];
-    AHPin(col, row);
-    UIView *circ = [UIView new];
-    circ.translatesAutoresizingMaskIntoConstraints = NO;
-    circ.backgroundColor = [UIColor colorWithRed:24/255.0 green:24/255.0 blue:27/255.0 alpha:1];
-    circ.layer.cornerRadius = 13;
-    circ.layer.borderWidth = 2;
-    circ.layer.borderColor = cc.CGColor;
-    UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:12 weight:UIImageSymbolWeightBold];
-    UIImageView *iv = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:sym withConfiguration:cfg]];
-    iv.tintColor = cc;
-    iv.translatesAutoresizingMaskIntoConstraints = NO;
-    [circ addSubview:iv];
-    [row addSubview:circ];
+    [row addSubview:h];
+    UIView *top = [UIView new];
+    top.backgroundColor = [UIColor colorWithWhite:1 alpha:0.14];
+    top.translatesAutoresizingMaskIntoConstraints = NO;
+    [row addSubview:top];
     [NSLayoutConstraint activateConstraints:@[
-        [circ.widthAnchor constraintEqualToConstant:26],
-        [circ.heightAnchor constraintEqualToConstant:26],
-        [circ.leadingAnchor constraintEqualToAnchor:row.leadingAnchor constant:-36],
-        [circ.topAnchor constraintEqualToAnchor:row.topAnchor],
-        [iv.centerXAnchor constraintEqualToAnchor:circ.centerXAnchor],
-        [iv.centerYAnchor constraintEqualToAnchor:circ.centerYAnchor],
+        [top.topAnchor constraintEqualToAnchor:row.topAnchor],
+        [top.leadingAnchor constraintEqualToAnchor:row.leadingAnchor],
+        [top.trailingAnchor constraintEqualToAnchor:row.trailingAnchor],
+        [top.heightAnchor constraintEqualToConstant:0.5],
+        [h.topAnchor constraintEqualToAnchor:row.topAnchor constant:11],
+        [h.leadingAnchor constraintEqualToAnchor:row.leadingAnchor],
+        [h.trailingAnchor constraintEqualToAnchor:row.trailingAnchor],
+        [h.bottomAnchor constraintEqualToAnchor:row.bottomAnchor constant:-11],
     ]];
+    if (last) {
+        UIView *bot = [UIView new];
+        bot.backgroundColor = [UIColor colorWithWhite:1 alpha:0.14];
+        bot.translatesAutoresizingMaskIntoConstraints = NO;
+        [row addSubview:bot];
+        [NSLayoutConstraint activateConstraints:@[
+            [bot.bottomAnchor constraintEqualToAnchor:row.bottomAnchor],
+            [bot.leadingAnchor constraintEqualToAnchor:row.leadingAnchor],
+            [bot.trailingAnchor constraintEqualToAnchor:row.trailingAnchor],
+            [bot.heightAnchor constraintEqualToConstant:0.5],
+        ]];
+    }
     return row;
 }
 
@@ -527,6 +567,52 @@ __attribute__((unused)) static UIView *AHFeature(NSString *sym, NSString *title,
     return row;
 }
 
+static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *url) {
+    UIView *iconV;
+    if (img) {
+        UIImageView *iv = [[UIImageView alloc] initWithImage:img];
+        iv.contentMode = UIViewContentModeScaleAspectFill;
+        iv.layer.cornerRadius = 7;
+        iv.layer.masksToBounds = YES;
+        iv.translatesAutoresizingMaskIntoConstraints = NO;
+        [iv.widthAnchor constraintEqualToConstant:28].active = YES;
+        [iv.heightAnchor constraintEqualToConstant:28].active = YES;
+        iconV = iv;
+    } else {
+        UILabel *g = AHLabel(glyph ?: @"", [UIFont systemFontOfSize:24 weight:UIFontWeightSemibold], AHGold(), 1);
+        g.textAlignment = NSTextAlignmentCenter;
+        [g.heightAnchor constraintEqualToConstant:28].active = YES;
+        iconV = g;
+    }
+    UILabel *t = AHLabel(title, [UIFont systemFontOfSize:11 weight:UIFontWeightMedium], UIColor.whiteColor, 1);
+    t.textAlignment = NSTextAlignmentCenter;
+    t.adjustsFontSizeToFitWidth = YES;
+    t.minimumScaleFactor = 0.7;
+    UIStackView *st = [[UIStackView alloc] initWithArrangedSubviews:@[iconV, t]];
+    st.axis = UILayoutConstraintAxisVertical;
+    st.alignment = UIStackViewAlignmentCenter;
+    st.spacing = 5;
+    st.userInteractionEnabled = NO;
+    st.translatesAutoresizingMaskIntoConstraints = NO;
+    UIButton *b = [UIButton buttonWithType:UIButtonTypeCustom];
+    b.translatesAutoresizingMaskIntoConstraints = NO;
+    b.backgroundColor = [UIColor colorWithWhite:1 alpha:0.10];
+    b.layer.cornerRadius = 14;
+    b.layer.cornerCurve = kCACornerCurveContinuous;
+    [b addSubview:st];
+    [NSLayoutConstraint activateConstraints:@[
+        [st.topAnchor constraintEqualToAnchor:b.topAnchor constant:10],
+        [st.bottomAnchor constraintEqualToAnchor:b.bottomAnchor constant:-9],
+        [st.leadingAnchor constraintEqualToAnchor:b.leadingAnchor constant:3],
+        [st.trailingAnchor constraintEqualToAnchor:b.trailingAnchor constant:-3],
+    ]];
+    if (url) {
+        [b addAction:[UIAction actionWithHandler:^(__kindof UIAction *a) { AHOpen(url); }]
+          forControlEvents:UIControlEventTouchUpInside];
+    }
+    return b;
+}
+
 @interface AHOnbVC : UIViewController
 @property (nonatomic, strong) UIView *dim;
 @property (nonatomic, strong) UIView *card;
@@ -536,7 +622,7 @@ __attribute__((unused)) static UIView *AHFeature(NSString *sym, NSString *title,
 @property (nonatomic, strong) CAShapeLayer *dashLayer;
 @property (nonatomic, strong) UIView *lineView;
 @property (nonatomic, strong) UIView *dash2View;
-@property (nonatomic, strong) CALayer *fillLayer;
+@property (nonatomic, strong) UISwitch *snooze;
 @property (nonatomic, strong) CAShapeLayer *dash2Layer;
 @property (nonatomic, strong) CAGradientLayer *lineGrad;
 @property (nonatomic, strong) NSTimer *timer;
@@ -561,7 +647,7 @@ __attribute__((unused)) static UIView *AHFeature(NSString *sym, NSString *title,
     _card.layer.cornerRadius = 30;
     _card.layer.cornerCurve = kCACornerCurveContinuous;
     _card.layer.masksToBounds = YES;
-    _card.layer.borderWidth = 0.5;
+    _card.layer.borderWidth = 0;
     _card.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.16].CGColor;
     [self.view addSubview:_card];
 
@@ -570,10 +656,22 @@ __attribute__((unused)) static UIView *AHFeature(NSString *sym, NSString *title,
     [_card addSubview:blur];
     AHPin(blur, _card);
     UIView *tint = [UIView new];
-    tint.backgroundColor = [UIColor colorWithRed:22/255.0 green:22/255.0 blue:25/255.0 alpha:0.38];
+    tint.backgroundColor = [UIColor colorWithRed:22/255.0 green:22/255.0 blue:25/255.0 alpha:0.30];
     tint.userInteractionEnabled = NO;
     [_card addSubview:tint];
     AHPin(tint, _card);
+
+    UIView *topEdge = [UIView new];
+    topEdge.backgroundColor = [UIColor colorWithWhite:1 alpha:0.30];
+    topEdge.userInteractionEnabled = NO;
+    topEdge.translatesAutoresizingMaskIntoConstraints = NO;
+    [_card addSubview:topEdge];
+    [NSLayoutConstraint activateConstraints:@[
+        [topEdge.topAnchor constraintEqualToAnchor:_card.topAnchor],
+        [topEdge.leadingAnchor constraintEqualToAnchor:_card.leadingAnchor constant:14],
+        [topEdge.trailingAnchor constraintEqualToAnchor:_card.trailingAnchor constant:-14],
+        [topEdge.heightAnchor constraintEqualToConstant:1],
+    ]];
 
     UILayoutGuide *sg = self.view.safeAreaLayoutGuide;
     [NSLayoutConstraint activateConstraints:@[
@@ -606,16 +704,16 @@ __attribute__((unused)) static UIView *AHFeature(NSString *sym, NSString *title,
     txt.spacing = 2;
 
     UIImageView *sigIv = [[UIImageView alloc] initWithImage:AHSig()];
-    sigIv.tintColor = AHOrange();
+    sigIv.tintColor = AHGold();
     sigIv.contentMode = UIViewContentModeScaleAspectFit;
     NSMutableAttributedString *mk = [[NSMutableAttributedString alloc] initWithString:@"MrZEFv" attributes:@{
         NSFontAttributeName: [UIFont systemFontOfSize:13 weight:UIFontWeightMedium],
-        NSForegroundColorAttributeName: AHOrange() }];
+        NSForegroundColorAttributeName: AHGold() }];
     [mk appendAttributedString:[[NSAttributedString alloc] initWithString:@"™" attributes:@{
         NSFontAttributeName: [UIFont systemFontOfSize:8],
-        NSForegroundColorAttributeName: AHOrange(),
+        NSForegroundColorAttributeName: AHGold(),
         NSBaselineOffsetAttributeName: @5 }]];
-    UILabel *mkl = AHLabel(nil, [UIFont systemFontOfSize:13], AHOrange(), 1);
+    UILabel *mkl = AHLabel(nil, [UIFont systemFontOfSize:13], AHGold(), 1);
     mkl.attributedText = mk;
     UIStackView *sigRow = [[UIStackView alloc] initWithArrangedSubviews:@[sigIv, mkl]];
     sigRow.axis = UILayoutConstraintAxisHorizontal;
@@ -635,22 +733,23 @@ __attribute__((unused)) static UIView *AHFeature(NSString *sym, NSString *title,
 
     UIFont *pf = [UIFont systemFontOfSize:12.5 weight:UIFontWeightMedium];
     UILabel *ppqT = AHLabel(@"PPQ TiMER", pf, AHGreen(), 1);
-    UILabel *ppqV = AHLabel(AHPPQTimer(), [UIFont systemFontOfSize:12.5 weight:UIFontWeightMedium],
-                            [UIColor colorWithWhite:1 alpha:0.8], 1);
+    UILabel *ppqV = AHLabel(AHPPQTimer(), [UIFont systemFontOfSize:15 weight:UIFontWeightSemibold],
+                            UIColor.whiteColor, 1);
     ppqV.textAlignment = NSTextAlignmentRight;
     [ppqT setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
     UIStackView *ppqRow = [[UIStackView alloc] initWithArrangedSubviews:@[ppqT, ppqV]];
     ppqRow.axis = UILayoutConstraintAxisHorizontal;
     ppqRow.spacing = 8;
+    ppqRow.alignment = UIStackViewAlignmentLastBaseline;
     UIView *track = [UIView new];
     track.translatesAutoresizingMaskIntoConstraints = NO;
-    track.backgroundColor = [UIColor colorWithWhite:1 alpha:0.12];
-    track.layer.cornerRadius = 2.5;
-    [track.heightAnchor constraintEqualToConstant:5].active = YES;
+    track.backgroundColor = [UIColor colorWithWhite:1 alpha:0.20];
+    track.layer.cornerRadius = 1.5;
+    [track.heightAnchor constraintEqualToConstant:3].active = YES;
     UIView *fill = [UIView new];
     fill.translatesAutoresizingMaskIntoConstraints = NO;
     fill.backgroundColor = AHGreen();
-    fill.layer.cornerRadius = 2.5;
+    fill.layer.cornerRadius = 1.5;
     [track addSubview:fill];
     [NSLayoutConstraint activateConstraints:@[
         [fill.leadingAnchor constraintEqualToAnchor:track.leadingAnchor],
@@ -662,10 +761,10 @@ __attribute__((unused)) static UIView *AHFeature(NSString *sym, NSString *title,
     ppqCol.axis = UILayoutConstraintAxisVertical;
     ppqCol.spacing = 7;
     ppqCol.layoutMarginsRelativeArrangement = YES;
-    ppqCol.layoutMargins = UIEdgeInsetsMake(10, 12, 10, 12);
+    ppqCol.layoutMargins = UIEdgeInsetsMake(2, 0, 2, 0);
     UIView *ppqBox = [UIView new];
     ppqBox.translatesAutoresizingMaskIntoConstraints = NO;
-    ppqBox.backgroundColor = [AHGreen() colorWithAlphaComponent:0.10];
+    ppqBox.backgroundColor = UIColor.clearColor;
     ppqBox.layer.cornerRadius = 14;
     ppqBox.layer.cornerCurve = kCACornerCurveContinuous;
     [ppqBox addSubview:ppqCol];
@@ -689,29 +788,15 @@ __attribute__((unused)) static UIView *AHFeature(NSString *sym, NSString *title,
     // ---- footer: Continue (N) ----
     _btn = [UIButton buttonWithType:UIButtonTypeCustom];
     _btn.translatesAutoresizingMaskIntoConstraints = NO;
-    UIColor *gold = [UIColor colorWithRed:232/255.0 green:181/255.0 blue:116/255.0 alpha:1];
-    _btn.backgroundColor = UIColor.clearColor;
-    _btn.layer.borderWidth = 1.5;
-    _btn.layer.borderColor = AHOrange().CGColor;
+    UIColor *gold = [UIColor colorWithWhite:0.08 alpha:1];
+    _btn.backgroundColor = [UIColor colorWithWhite:1 alpha:0.92];
     _btn.layer.masksToBounds = YES;
-    _fillLayer = [CALayer layer];
-    _fillLayer.backgroundColor = [AHOrange() colorWithAlphaComponent:0.4].CGColor;
-    _fillLayer.anchorPoint = CGPointMake(0, 0.5);
-    _fillLayer.transform = CATransform3DMakeScale(0.0001, 1, 1);
-    [_btn.layer insertSublayer:_fillLayer atIndex:0];
     _btn.layer.cornerRadius = 24;
     [_btn.widthAnchor constraintGreaterThanOrEqualToConstant:150].active = YES;
     _btn.layer.cornerCurve = kCACornerCurveContinuous;
     _btn.titleLabel.font = [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold];
-    UIImage *arrow = [UIImage systemImageNamed:@"arrow.right" withConfiguration:
-        [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightSemibold]];
-    [_btn setImage:arrow forState:UIControlStateNormal];
-    [_btn setImage:arrow forState:UIControlStateDisabled];
     _btn.tintColor = gold;
-    _btn.semanticContentAttribute = UISemanticContentAttributeForceRightToLeft;
     _btn.contentEdgeInsets = UIEdgeInsetsMake(0, 20, 0, 20);
-    _btn.titleEdgeInsets = UIEdgeInsetsMake(0, -4, 0, 4);
-    _btn.imageEdgeInsets = UIEdgeInsetsMake(0, 4, 0, -4);
     [_btn setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
     [_btn setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
     UIColor *dark = gold;
@@ -813,37 +898,47 @@ __attribute__((unused)) static UIView *AHFeature(NSString *sym, NSString *title,
     [body addArrangedSubview:_dashView];
     [body setCustomSpacing:14 afterView:_dashView];
 
-    UIView *tl = [UIView new];
-    tl.translatesAutoresizingMaskIntoConstraints = NO;
-    _lineView = [UIView new];
-    _lineView.translatesAutoresizingMaskIntoConstraints = NO;
-    _lineGrad = [CAGradientLayer layer];
-    _lineGrad.colors = @[(id)AHOrange().CGColor, (id)AHGreen().CGColor];
-    [_lineView.layer addSublayer:_lineGrad];
-    [tl addSubview:_lineView];
     UIStackView *rows = [[UIStackView alloc] initWithArrangedSubviews:@[
-        AHTLRow(@"checkmark.shield", @"AIRCORE PROTECTiON", UIColor.whiteColor, AHOrange(),
-                @"Blocks risky Apple endpoints to help you keep your certificate alive while you use this app."),
-        AHTLRow(@"hand.tap", @"ANTiPiRACY SiGNATURE", UIColor.whiteColor, AHOrange(),
-                @"App was Downloaded from AirShare.lol"),
-        AHTLRow(@"checkmark", @"AirShare REPOSiTORY", AHGreen(), AHGreen(),
-                @"Trusted status. This app was scanned & verified!")]];
+        AHFlatRow(@"checkmark.shield", @"AIRCORE PROTECTiON", UIColor.whiteColor, AHGold(),
+                  @"Blocks risky Apple endpoints to help you keep your certificate alive while you use this app.", NO),
+        AHFlatRow(@"hand.tap", @"ANTiPiRACY SiGNATURE", UIColor.whiteColor, AHGold(),
+                  @"App was Downloaded from AirShare.lol", NO),
+        AHFlatRow(@"checkmark.circle", @"AirShare REPOSiTORY", AHGreen(), AHGreen(),
+                  @"Trusted status. This app was scanned & verified!", YES)]];
     rows.axis = UILayoutConstraintAxisVertical;
-    rows.spacing = 14;
-    rows.translatesAutoresizingMaskIntoConstraints = NO;
-    [tl addSubview:rows];
+    rows.spacing = 0;
+    [body addArrangedSubview:rows];
+    _dashView.alpha = 0;
+    _dash2View.alpha = 0;
+    UIStackView *tiles = [[UIStackView alloc] initWithArrangedSubviews:@[
+        AHTile(AHAirShareLogo(), nil, @"AirShare.lol", @"https://airshare.lol"),
+        AHTile(AHBotLogo(), @"\u2709", @"@FastDecryptBot", @"https://t.me/FastDecryptBot"),
+        AHTile(nil, @"\u0141", @"Donate LTC", nil),
+        AHTile(AHDelvekLogo(), @"D", @"DELvEK.NET", @"https://delvek.net")]];
+    tiles.axis = UILayoutConstraintAxisHorizontal;
+    tiles.distribution = UIStackViewDistributionFillEqually;
+    tiles.spacing = 8;
+    [body addArrangedSubview:tiles];
+    [body setCustomSpacing:14 afterView:tiles];
+
+    UILabel *snL = AHLabel(@"Don\u2019t show again today", [UIFont systemFontOfSize:12.5], [UIColor colorWithWhite:1 alpha:0.8], 1);
+    _snooze = [UISwitch new];
+    _snooze.onTintColor = AHGreen();
+    _snooze.transform = CGAffineTransformMakeScale(0.8, 0.8);
+    UIView *swWrap = [UIView new];
+    swWrap.translatesAutoresizingMaskIntoConstraints = NO;
+    _snooze.translatesAutoresizingMaskIntoConstraints = NO;
+    [swWrap addSubview:_snooze];
     [NSLayoutConstraint activateConstraints:@[
-        [rows.topAnchor constraintEqualToAnchor:tl.topAnchor],
-        [rows.bottomAnchor constraintEqualToAnchor:tl.bottomAnchor],
-        [rows.leadingAnchor constraintEqualToAnchor:tl.leadingAnchor constant:36],
-        [rows.trailingAnchor constraintEqualToAnchor:tl.trailingAnchor],
-        [_lineView.leadingAnchor constraintEqualToAnchor:tl.leadingAnchor constant:12],
-        [_lineView.widthAnchor constraintEqualToConstant:2],
-        [_lineView.topAnchor constraintEqualToAnchor:tl.topAnchor constant:13],
-        [_lineView.bottomAnchor constraintEqualToAnchor:tl.bottomAnchor constant:-13],
+        [swWrap.widthAnchor constraintEqualToConstant:44],
+        [swWrap.heightAnchor constraintEqualToConstant:28],
+        [_snooze.centerXAnchor constraintEqualToAnchor:swWrap.centerXAnchor],
+        [_snooze.centerYAnchor constraintEqualToAnchor:swWrap.centerYAnchor],
     ]];
-    [body addArrangedSubview:tl];
-    [body addArrangedSubview:row1];
+    UIStackView *snRow = [[UIStackView alloc] initWithArrangedSubviews:@[snL, swWrap]];
+    snRow.axis = UILayoutConstraintAxisHorizontal;
+    snRow.alignment = UIStackViewAlignmentCenter;
+    [body addArrangedSubview:snRow];
 
     [NSLayoutConstraint activateConstraints:@[
         [head.topAnchor constraintEqualToAnchor:_card.topAnchor constant:16],
@@ -886,8 +981,6 @@ __attribute__((unused)) static UIView *AHFeature(NSString *sym, NSString *title,
     [p addLineToPoint:CGPointMake(w, 0.5)];
     _dashLayer.path = p.CGPath;
     _lineGrad.frame = _lineView.bounds;
-    _fillLayer.bounds = _btn.bounds;
-    _fillLayer.position = CGPointMake(0, _btn.bounds.size.height / 2);
     UIBezierPath *p2 = [UIBezierPath bezierPath];
     [p2 moveToPoint:CGPointMake(0, 0.5)];
     [p2 addLineToPoint:CGPointMake(_dash2View.bounds.size.width, 0.5)];
@@ -901,14 +994,6 @@ __attribute__((unused)) static UIView *AHFeature(NSString *sym, NSString *title,
         self.card.transform = CGAffineTransformIdentity;
         self.dim.alpha = 1;
     } completion:^(BOOL f) { [self.scroll flashScrollIndicators]; }];
-
-    CABasicAnimation *sweep = [CABasicAnimation animationWithKeyPath:@"transform.scale.x"];
-    sweep.fromValue = @0.0001;
-    sweep.toValue = @1;
-    sweep.duration = AH_COUNTDOWN_SECONDS;
-    sweep.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
-    _fillLayer.transform = CATransform3DIdentity;
-    [_fillLayer addAnimation:sweep forKey:@"sweep"];
 
     __weak typeof(self) ws = self;
     _timer = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t) {
@@ -928,6 +1013,7 @@ __attribute__((unused)) static UIView *AHFeature(NSString *sym, NSString *title,
 }
 
 - (void)finish {
+    if (_snooze.isOn) [NSUserDefaults.standardUserDefaults setObject:AHToday() forKey:@"AirHideSnoozeDay"];
     [_timer invalidate];
     _timer = nil;
     [UIView animateWithDuration:0.3 animations:^{
@@ -946,6 +1032,7 @@ static void AHShowOnboarding(void) {
     if (gOnbWin || AHOff()) return;
     NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
     if ([d boolForKey:kOnbOff]) return;
+    if ([[d stringForKey:@"AirHideSnoozeDay"] isEqualToString:AHToday()]) return;
 #if !AH_ONBOARD_EVERY_LAUNCH
     if ([d boolForKey:kOnbSeen]) return;
 #endif

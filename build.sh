@@ -10,6 +10,11 @@ if [ -f AirShareLogo.png ]; then
   xxd -i AirShareLogo.png > AirShareLogo.h
 fi
 
+rm -f BotLogo.h
+if [ -f BotLogo.png ]; then
+  xxd -i BotLogo.png > BotLogo.h
+fi
+
 rm -f DelvekLogo.h
 [ -f DelvekLogo.png ] || curl -fsSL -m 30 -o DelvekLogo.png https://delvek.net/img/delvek4.png || rm -f DelvekLogo.png
 if [ -f DelvekLogo.png ]; then
