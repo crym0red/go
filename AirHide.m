@@ -963,16 +963,24 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
     _snooze.translatesAutoresizingMaskIntoConstraints = NO;
     [swWrap addSubview:_snooze];
     [NSLayoutConstraint activateConstraints:@[
-        [swWrap.widthAnchor constraintEqualToConstant:51],
-        [swWrap.heightAnchor constraintEqualToConstant:31],
-        [_snooze.centerXAnchor constraintEqualToAnchor:swWrap.centerXAnchor],
+        [swWrap.widthAnchor constraintEqualToConstant:63],
+        [swWrap.heightAnchor constraintEqualToConstant:35],
+        [_snooze.widthAnchor constraintEqualToConstant:51],
+        [_snooze.heightAnchor constraintEqualToConstant:31],
+        [_snooze.leadingAnchor constraintEqualToAnchor:swWrap.leadingAnchor constant:4],
         [_snooze.centerYAnchor constraintEqualToAnchor:swWrap.centerYAnchor],
     ]];
+    [swWrap setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [swWrap setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [snL setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+    snL.adjustsFontSizeToFitWidth = YES;
+    snL.minimumScaleFactor = 0.8;
     UIStackView *snRow = [[UIStackView alloc] initWithArrangedSubviews:@[snL, swWrap]];
     snRow.axis = UILayoutConstraintAxisHorizontal;
     snRow.alignment = UIStackViewAlignmentCenter;
+    snRow.spacing = 6;
     snRow.layoutMarginsRelativeArrangement = YES;
-    snRow.layoutMargins = UIEdgeInsetsMake(0, 0, 0, 4);
+    snRow.layoutMargins = UIEdgeInsetsMake(0, 0, 0, 0);
     [body addArrangedSubview:snRow];
 
     [NSLayoutConstraint activateConstraints:@[
@@ -1063,13 +1071,132 @@ static UIView *AHTile(UIImage *img, NSString *glyph, NSString *title, NSString *
 
 @end
 
+static UIWindow *gToastWin;
+
+static void AHShowToast(void) {
+    if (gToastWin || AHOff()) return;
+    UIWindowScene *scene = nil;
+    for (UIScene *sc in UIApplication.sharedApplication.connectedScenes) {
+        if ([sc isKindOfClass:UIWindowScene.class] && sc.activationState == UISceneActivationStateForegroundActive) {
+            scene = (UIWindowScene *)sc;
+            break;
+        }
+    }
+    UIWindow *w = scene ? [[UIWindow alloc] initWithWindowScene:scene]
+                        : [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    w.windowLevel = UIWindowLevelAlert + 50;
+    w.backgroundColor = UIColor.clearColor;
+    UIViewController *vc = [UIViewController new];
+    vc.view.backgroundColor = UIColor.clearColor;
+    w.rootViewController = vc;
+
+    UIVisualEffectView *card = [[UIVisualEffectView alloc] initWithEffect:
+        [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark]];
+    card.translatesAutoresizingMaskIntoConstraints = NO;
+    card.layer.cornerRadius = 26;
+    card.clipsToBounds = YES;
+    card.layer.borderWidth = 0.5;
+    card.layer.borderColor = [UIColor colorWithWhite:1 alpha:0.18].CGColor;
+    card.alpha = 0;
+    card.transform = CGAffineTransformMakeScale(0.92, 0.92);
+    [vc.view addSubview:card];
+
+    UIView *tint = [UIView new];
+    tint.translatesAutoresizingMaskIntoConstraints = NO;
+    tint.backgroundColor = [UIColor colorWithRed:0.13 green:0.13 blue:0.19 alpha:0.35];
+    [card.contentView addSubview:tint];
+
+    UIView *ring = [UIView new];
+    ring.translatesAutoresizingMaskIntoConstraints = NO;
+    [ring.widthAnchor constraintEqualToConstant:44].active = YES;
+    [ring.heightAnchor constraintEqualToConstant:44].active = YES;
+    CAShapeLayer *track = [CAShapeLayer layer];
+    CAShapeLayer *prog = [CAShapeLayer layer];
+    UIBezierPath *ph = [UIBezierPath bezierPathWithArcCenter:CGPointMake(22, 22) radius:20.5
+        startAngle:-M_PI_2 endAngle:M_PI * 1.5 clockwise:YES];
+    for (CAShapeLayer *l in @[track, prog]) {
+        l.path = ph.CGPath;
+        l.fillColor = UIColor.clearColor.CGColor;
+        l.lineWidth = 3;
+        l.lineCap = kCALineCapRound;
+        [ring.layer addSublayer:l];
+    }
+    track.strokeColor = [UIColor colorWithWhite:1 alpha:0.12].CGColor;
+    prog.strokeColor = AHGreen().CGColor;
+    UILabel *num = AHLabel(@"3", [UIFont systemFontOfSize:16 weight:UIFontWeightSemibold], UIColor.whiteColor, 1);
+    num.textAlignment = NSTextAlignmentCenter;
+    num.translatesAutoresizingMaskIntoConstraints = NO;
+    [ring addSubview:num];
+    [NSLayoutConstraint activateConstraints:@[
+        [num.centerXAnchor constraintEqualToAnchor:ring.centerXAnchor],
+        [num.centerYAnchor constraintEqualToAnchor:ring.centerYAnchor]]];
+
+    UILabel *l1 = AHLabel(@"Enjoy", [UIFont systemFontOfSize:11], [UIColor colorWithWhite:1 alpha:0.5], 1);
+    UILabel *l2 = AHLabel(AHAppName(), [UIFont systemFontOfSize:19 weight:UIFontWeightSemibold], UIColor.whiteColor, 1);
+    UILabel *l3 = AHLabel(@"AirShare.lol", [UIFont systemFontOfSize:12], AHGreen(), 1);
+    UIStackView *tx = [[UIStackView alloc] initWithArrangedSubviews:@[l1, l2, l3]];
+    tx.axis = UILayoutConstraintAxisVertical;
+    tx.spacing = 1;
+    UIStackView *row = [[UIStackView alloc] initWithArrangedSubviews:@[tx, ring]];
+    row.axis = UILayoutConstraintAxisHorizontal;
+    row.alignment = UIStackViewAlignmentCenter;
+    row.spacing = 16;
+    row.translatesAutoresizingMaskIntoConstraints = NO;
+    [card.contentView addSubview:row];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [card.centerXAnchor constraintEqualToAnchor:vc.view.centerXAnchor],
+        [card.centerYAnchor constraintEqualToAnchor:vc.view.centerYAnchor],
+        [card.widthAnchor constraintLessThanOrEqualToAnchor:vc.view.widthAnchor constant:-48],
+        [tint.topAnchor constraintEqualToAnchor:card.contentView.topAnchor],
+        [tint.bottomAnchor constraintEqualToAnchor:card.contentView.bottomAnchor],
+        [tint.leadingAnchor constraintEqualToAnchor:card.contentView.leadingAnchor],
+        [tint.trailingAnchor constraintEqualToAnchor:card.contentView.trailingAnchor],
+        [row.topAnchor constraintEqualToAnchor:card.contentView.topAnchor constant:14],
+        [row.bottomAnchor constraintEqualToAnchor:card.contentView.bottomAnchor constant:-14],
+        [row.leadingAnchor constraintEqualToAnchor:card.contentView.leadingAnchor constant:20],
+        [row.trailingAnchor constraintEqualToAnchor:card.contentView.trailingAnchor constant:-18],
+    ]];
+
+    gToastWin = w;
+    w.hidden = NO;
+    [vc.view layoutIfNeeded];
+
+    CABasicAnimation *a = [CABasicAnimation animationWithKeyPath:@"strokeEnd"];
+    a.fromValue = @1; a.toValue = @0; a.duration = 3.0;
+    a.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear];
+    a.fillMode = kCAFillModeForwards; a.removedOnCompletion = NO;
+    [prog addAnimation:a forKey:@"cd"];
+
+    [UIView animateWithDuration:0.35 delay:0 usingSpringWithDamping:0.85 initialSpringVelocity:0.4
+                        options:0 animations:^{
+        card.alpha = 1;
+        card.transform = CGAffineTransformIdentity;
+    } completion:nil];
+
+    __block int left = 3;
+    NSTimer *t = [NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *tm) {
+        left--;
+        if (left > 0) { num.text = [NSString stringWithFormat:@"%d", left]; return; }
+        [tm invalidate];
+        [UIView animateWithDuration:0.3 animations:^{
+            card.alpha = 0;
+            card.transform = CGAffineTransformMakeScale(0.94, 0.94);
+        } completion:^(BOOL f) {
+            gToastWin.hidden = YES;
+            gToastWin = nil;
+        }];
+    }];
+    [NSRunLoop.mainRunLoop addTimer:t forMode:NSRunLoopCommonModes];
+}
+
 static UIWindow *gOnbWin;
 
 static void AHShowOnboarding(void) {
-    if (gOnbWin || AHOff()) return;
+    if (gOnbWin || gToastWin || AHOff()) return;
     NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
     if ([d boolForKey:kOnbOff]) return;
-    if ([[d stringForKey:@"AirHideSnoozeDay"] isEqualToString:AHToday()]) return;
+    if ([[d stringForKey:@"AirHideSnoozeDay"] isEqualToString:AHToday()]) { AHShowToast(); return; }
 #if !AH_ONBOARD_EVERY_LAUNCH
     if ([d boolForKey:kOnbSeen]) return;
 #endif
@@ -1089,6 +1216,7 @@ static void AHShowOnboarding(void) {
         gOnbWin.hidden = YES;
         gOnbWin = nil;
         [NSUserDefaults.standardUserDefaults setBool:YES forKey:kOnbSeen];
+        AHShowToast();
     };
     w.rootViewController = vc;
     gOnbWin = w;
